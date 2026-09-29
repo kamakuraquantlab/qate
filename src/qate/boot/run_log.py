@@ -1,8 +1,22 @@
+"""What a run recorded about itself: provenance for a number.
+
+A run log answers "what produced this figure" -- which environment, which library
+revision, which configuration, which parameters -- so a result in a notebook or an
+article can be traced back and re-run.
+
+It is *given* what it records. It used to read `env.get("config")`, which only
+returned anything after `Env.load()` had walked `desc.json`'s module map, so a
+caller that loaded its configuration any other way silently logged
+`"config": null`. The provenance of a number is not a good place for a silent
+null: whatever loaded the configuration passes it in.
+"""
+
 import json
 import os
 import time
 import uuid
 from logging import getLogger
+from typing import Any
 
 from qate.env.env import Env
 from qate.util.encoder import Encoder
@@ -11,8 +25,17 @@ LOG = getLogger(__name__)
 
 
 class RunLog:
-    def __init__(self, env: Env):
+    def __init__(
+        self,
+        env: Env,
+        config: Any = None,
+        profile: Any = None,
+        params: dict | None = None,
+    ):
         self.env = env
+        self.config = config
+        self.profile = profile
+        self.params = params
         self.start_ts = time.time()
         self._id = str(uuid.uuid4())
 
@@ -23,10 +46,11 @@ class RunLog:
         return {
             "id": self._id,
             "start_ts": self.start_ts,
+            "env": str(self.env.name),
             "git_rev": self.env.git_rev,
-            "config": self.env.get("config"),
-            "trading": self.env.get("trading"),
-            "params": self.env.get("params"),
+            "config": self.config,
+            "trading": self.profile,
+            "params": self.params,
         }
 
     def get_id(self) -> str:

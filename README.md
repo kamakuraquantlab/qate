@@ -168,6 +168,7 @@ load an adapter from a checkout that is not installed.
 | What | Where |
 |---|---|
 | Run directories | `~/env`, or `QATE_ENV_ROOT`, or `env_root_dir` in a `.qate.json` beside the script |
+| A run's configuration | `trading.json`, `config.json`, `params.json` in the run directory, read by `qate.boot.load_trading_env` |
 | Credentials | `~/.qate/<service>.keys`, INI, one section per key set |
 
 There is no market-data setting. `qate` does not read market data, so it has no

@@ -1,10 +1,8 @@
 import fcntl
-import importlib
 import json
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, field
 from logging import INFO, WARNING, Formatter, getLogger
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
@@ -28,14 +26,6 @@ ENUM_TYPE_HOOKS = {
 
 
 LOCK_FILE = ".lock"
-DESCRIPTION_FILE = "desc.json"
-
-
-@dataclass
-class Description:
-    name: EnvName
-    modules: dict[str, str] = field(default_factory=dict)
-
 
 UNKNOWN_GIT_REV = "unknown"
 
@@ -84,7 +74,6 @@ class Env:
         self.work_dir = str(work_dir) if work_dir else os.path.join(self.root_dir, self.name)
         self.git_rev = get_git_rev()
         self.hooks = ENUM_TYPE_HOOKS.copy()
-        self.objects = {}
         self.enable_multiprocess_logging = enable_multiprocess_logging
 
     def visit(self):
@@ -200,23 +189,6 @@ echo "Warning: Process may still be running"
         print("=" * 80)
         sys.exit(0)
 
-    def get(self, key: str) -> Any:
-        return self.objects.get(key, None)
-
-    def load(self):
-        if not os.path.isdir(self.work_dir):
-            raise Exception(f"{self.name} not setup")
-
-        self.desc: Description = self.load_object(DESCRIPTION_FILE, Description)
-        if self.desc.name != self.name:
-            raise Exception(f"Inconsistent Profile {self.name}")
-
-        for key, class_name in self.desc.modules.items():
-            module_name, class_name = class_name.rsplit(".", 1)
-            mod = importlib.import_module(module_name)
-            cls = None if module_name == "builtins" else getattr(mod, class_name)
-            self.objects[key] = self.load_object(key + ".json", cls)
-
     def load_object(self, file_name: str, object_cls=None) -> Any:
         file = os.path.join(self.work_dir, file_name)
         if not os.path.isfile(file):
@@ -294,13 +266,12 @@ echo "Warning: Process may still be running"
         root.setLevel(INFO)
         getLogger("httpx").setLevel(WARNING)
 
-    def setup(self, desc: Description, forced=False):
+    def setup(self, forced: bool = False) -> None:
+        """Create the directory. Refuses an existing one unless forced."""
         if not os.path.isdir(self.work_dir):
             os.makedirs(self.work_dir)
-        else:
-            if not forced:
-                raise Exception(f"{self.work_dir} is not empty")
-        self.save_object(DESCRIPTION_FILE, desc, forced)
+        elif not forced:
+            raise Exception(f"{self.work_dir} is not empty")
 
     @classmethod
     def setup_env(
@@ -309,27 +280,9 @@ echo "Warning: Process may still be running"
         env_name: EnvName,
         objects: dict[str, Any] = None,
     ) -> "Env":
+        """Create an environment and write one `<key>.json` per object given."""
         env = cls(root_dir, env_name)
-        modules = {}
-
-        if objects:
-            for name, obj in objects.items():
-                modules[name] = obj.__class__.__module__ + "." + obj.__class__.__name__
-
-        desc = Description(
-            env.name,
-            modules,
-        )
-        env.setup(desc)
-
-        if objects:
-            for name, obj in objects.items():
-                env.save_object(name + ".json", obj)
-
-        return env
-
-    @classmethod
-    def load_env(cls, root_dir: str, env_name: EnvName) -> "Env":
-        env = Env(root_dir, env_name)
-        env.load()
+        env.setup()
+        for name, obj in (objects or {}).items():
+            env.save_object(name + ".json", obj)
         return env

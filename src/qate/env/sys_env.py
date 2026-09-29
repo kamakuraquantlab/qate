@@ -116,6 +116,5 @@ def get_influxdb(key_name: str = "DEFAULT") -> tuple[str, str, str]:
 
 
 def load_env(env_name: EnvName) -> Env:
-    env = Env(get_env_root_dir(), env_name)
-    env.load()
-    return env
+    """The environment directory. Reading its files is `qate.boot.load_trading_env`."""
+    return Env(get_env_root_dir(), env_name)

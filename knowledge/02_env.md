@@ -19,13 +19,19 @@ and keep one environment per running process.
 
 ```
 {ENV_DIR}/{EnvName}/
-  desc.json          # name + list of module keys to load
-  {key}.json         # typed config objects (one file per module key)
+  trading.json       # which strategy module and variant
+  config.json        # the strategy's Config
+  params.json        # the parameters one run uses
+  param_grid.json    # a search space, for an optimize sweep. Optional
+  features.json      # feature flags. Optional
   .lock              # PID-based process lock (fcntl); prevents double-start
   env.log            # rotating log file (midnight rotation)
   start_{name}.sh    # auto-generated on first daemon run
   stop_{name}.sh     # auto-generated on first daemon run
 ```
+
+There is no index file. Each `<key>.json` is read by whatever wants it, with the
+class named by the reader -- see §5.
 
 ## 2 Key methods
 
@@ -34,8 +40,7 @@ and keep one environment per running process.
 | `env.visit()` | `cd` to `work_dir` + configure logging to `env.log` |
 | `env.enter(daemon=False)` | `visit()` + acquire `.lock`; if `daemon=True` and scripts don't exist yet, generates `start_*.sh` / `stop_*.sh` and exits |
 | `env.leave()` | Release lock + delete `.lock` |
-| `env.load()` | Load `desc.json` + all configured modules |
-| `env.load_object(key, cls)` | Deserialize `{key}.json` → dataclass via `dacite` |
+| `env.load_object(file, cls)` | Deserialize one `<file>.json` → dataclass via `dacite` |
 | `env.save_object(key, obj)` | Serialize dataclass → `{key}.json` |
 
 ## 3 Logging
@@ -77,9 +82,9 @@ The one class that cannot be known in advance is the strategy's own `Config`, an
 `Symbol`, `Side`, `SettleType`, `Market` and `EnvName`, so those fields deserialize
 from their string forms; for `EnvName` the hook re-validates.
 
-### 5.1 `desc.json` and its module map
+### 5.1 There used to be an index
 
-`desc.json` used to carry a map from each file to the class that loads it:
+`desc.json` carried a map from each file to the class that loads it:
 
 ```json
 {
@@ -88,12 +93,15 @@ from their string forms; for `EnvName` the hook re-validates.
 }
 ```
 
-`Env.load()` still reads it, and nothing in the library requires it any more. The
-map bought no flexibility -- every reader already knew it wanted a
+`Env.load()` read it and filled a dict that callers reached into with
+`env.get("config")`. Both are gone.
+
+The map bought no flexibility -- every reader already knew it wanted a
 `TradingProfile` and a dict -- and it cost a file that goes stale the moment code
 moves, pointing at a class that no longer exists while the code it describes works
-fine. Prefer `load_trading_env`, and let `desc.json` say only which environment
-this is.
+fine. It also made loading configuration and *recording* it the same step: a run
+log read `env.get("config")`, so a caller that loaded its configuration any other
+way silently logged `"config": null`. `RunLog` is given what it records now.
 
 ## 6 Where a run writes
 
