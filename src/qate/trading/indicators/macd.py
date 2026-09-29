@@ -2,6 +2,7 @@ from collections import deque
 
 from qate.trading.chart import Bar
 from qate.trading.indicator import Indicator
+
 from .ema import EMA
 
 

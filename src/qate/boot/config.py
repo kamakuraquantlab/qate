@@ -10,8 +10,8 @@ from qate.core.feed import ExchangeFeed, MarketDataFeed
 from qate.core.gateway import ExchangeGateway
 from qate.core.model import ExchangeName, Market
 from qate.env import sys_env
-from qate.exchange import factory, registry
 from qate.env.env import Env
+from qate.exchange import factory, registry
 from qate.trading.gateways import SimulatorGateway
 
 LOG = getLogger(__name__)

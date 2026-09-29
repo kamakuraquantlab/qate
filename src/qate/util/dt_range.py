@@ -1,7 +1,6 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import List
 
 
 class TimeFormat:
@@ -72,7 +71,7 @@ class DtRange:
             days.append(day.strftime(self._date_fmt))
         return days
 
-    def chunks(self, chunk_size: int) -> List["DtRange"]:
+    def chunks(self, chunk_size: int) -> list["DtRange"]:
         """Splits the date range into smaller chunks."""
         if chunk_size <= 0:
             raise ValueError("Chunk size must be a positive integer.")
@@ -81,8 +80,7 @@ class DtRange:
         current_start = self._start_dt
         while current_start <= self._end_dt:
             current_end = current_start + timedelta(days=chunk_size) - timedelta(microseconds=1)
-            if current_end > self._end_dt:
-                current_end = self._end_dt
+            current_end = min(current_end, self._end_dt)
             chunks.append(DtRange(current_start, current_end))
             current_start += timedelta(days=chunk_size)
         return chunks
@@ -106,12 +104,12 @@ class DtRange:
     @property
     def start_dt_utc(self) -> datetime:
         """Return start_dt converted to UTC as a naive datetime."""
-        return datetime.fromtimestamp(self._start_ts, tz=timezone.utc).replace(tzinfo=None)
+        return datetime.fromtimestamp(self._start_ts, tz=UTC).replace(tzinfo=None)
 
     @property
     def end_dt_utc(self) -> datetime:
         """Return end_dt converted to UTC as a naive datetime."""
-        return datetime.fromtimestamp(self._end_ts, tz=timezone.utc).replace(tzinfo=None)
+        return datetime.fromtimestamp(self._end_ts, tz=UTC).replace(tzinfo=None)
 
     @property
     def start_str(self) -> str:
@@ -122,7 +120,7 @@ class DtRange:
         return self._end_dt.strftime(TimeFormat.ISO_DATETIME)
 
     @classmethod
-    def from_strings(cls, start_str: str, end_str: str = None) -> "DtRange":
+    def from_strings(cls, start_str: str, end_str: str | None = None) -> "DtRange":
         if _is_time_ago_format(start_str):
             return _process_time_ago(start_str)
 

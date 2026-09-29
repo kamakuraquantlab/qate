@@ -9,8 +9,7 @@ used to be a `MetricRecord` wrapper pairing a ts with a bare list.
 
 import os
 
-from qate.core.model import ExchangeName, Field, Measurement, Side, Tag
-from qate.core.model import Metric
+from qate.core.model import ExchangeName, Field, Measurement, Metric, Side, Tag
 from qate.trading import metrics
 from qate.util.dt_range import DtRange
 

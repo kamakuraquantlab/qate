@@ -22,4 +22,3 @@ class Indicator(ABC):
         Returns:
             Indicator value (float), multiple values (dict), or None if not enough data
         """
-        pass

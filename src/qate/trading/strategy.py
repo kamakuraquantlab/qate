@@ -4,7 +4,6 @@ from typing import Generic, TypeVar
 from qate.core.ev_type import EventType
 from qate.core.feed import StatusFeed
 from qate.core.gateway import ExchangeGateway
-from qate.trading.metrics import FeedWriter
 from qate.core.model import (
     EventLoopExit,
     Metric,
@@ -12,8 +11,9 @@ from qate.core.model import (
     SettleType,
     Trade,
 )
-from qate.trading.exceptions import StopTradingException
 from qate.core.order import OrderError, OrderResponse
+from qate.trading.exceptions import StopTradingException
+from qate.trading.metrics import FeedWriter
 
 LOG = getLogger(__name__)
 
@@ -21,7 +21,7 @@ C = TypeVar("C")
 
 
 class Strategy(StatusFeed, Generic[C]):
-    def __init__(self, config: C = None, params: dict = None):
+    def __init__(self, config: C = None, params: dict | None = None):
         super(Strategy, self).__init__()
         self._is_ready = False
         self.feed_writer = FeedWriter(self)

@@ -30,11 +30,11 @@ The msgpack encoding is an implementation detail and the name deliberately does 
 mention it: what this is for is keeping a record.
 """
 
+from collections.abc import Iterator
 from datetime import datetime
 from enum import Enum, auto
 from logging import getLogger
 from pathlib import Path
-from typing import Iterator
 
 import msgpack
 

@@ -31,8 +31,7 @@ class Inventory:
             return
 
         net_pnl = self.tracker.net_realized
-        if net_pnl > self._peak_pnl:
-            self._peak_pnl = net_pnl
+        self._peak_pnl = max(self._peak_pnl, net_pnl)
 
         drawdown = self._peak_pnl - net_pnl
         if drawdown > self.max_drawdown:
