@@ -31,9 +31,9 @@ classifiers = [
 # exchange adapters, and their absence is what makes "this package cannot reach
 # an exchange" a fact about the install rather than a claim in a README.
 #
-# Nothing here reads market data either. Locating and reading it belongs to
-# whoever owns the data -- see the note on qate.store -- so there is no data
-# dependency to bring an HTTP client in through the back door.
+# Nothing here reads market data, and nothing here stores results. Both belong to
+# whoever owns them, so there is no data dependency to bring an HTTP client in
+# through the back door and no database client at all.
 dependencies = [
     "dacite>=1.9",
     "msgpack>=1.1",
@@ -43,11 +43,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Exporting metrics to InfluxDB is the optional second step described in
-# qate.store; a run writes its results locally either way.
-influx = [
-    "influxdb-client>=1.49",
-]
 # numba JITs the trade-aggression hot loops. Optional because numba pins hard
 # against numpy's ABI and lags each new numpy release; qate.trading.aggression
 # falls back to the same code unjitted.
@@ -57,7 +52,6 @@ fast = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.1",
-    "influxdb-client>=1.49",
 ]
 
 [project.urls]

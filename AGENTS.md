@@ -47,7 +47,7 @@ Two tests hold this, and both are worth understanding before changing them:
 | A third worked example | probably nowhere — two is the point | |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
 | A way of reading recorded market data | the replayer (Enoshima) | here |
-| A way of writing a run's own output | `qate.store` | |
+| A way of storing a run's output | the tool that produces it (Enoshima) | here |
 
 **`qate` does not read market data and does not know where it lives.** A replayer
 hands it events. This was not the original shape: there was a `qate.data.bronze`
@@ -88,9 +88,12 @@ abstract base class cannot give.
   `Strategy.warmup_*` until `is_ready`. It consumes at least one event even when
   the strategy is ready from the start. A test that counts events must account
   for it.
-- **Metrics are written locally first, always.** InfluxDB is a later export, and
-  `influxdb-client` is an extra. Nothing on a run's hot path may require a
-  database to be reachable.
+- **`qate` has no storage layer.** It writes one thing: the local metric log in
+  `qate.trading.metric_log`. Parquet layouts, database clients and export live with
+  whoever produces the results — for a backtest, Enoshima. `qate.store` existed and
+  was removed for this reason; two of its three modules had no consumer here at all.
+- **Nothing on a run's hot path may require a database to be reachable.** The log
+  is appended locally and shipped later, if at all.
 - **Metric objects pack enum *values*, not names** — `[measurement, ts, tags,
   fields]` with integer keys. `ExchangeName`, `Symbol`, `Measurement`, `Tag` and
   `Field` are therefore append-only: reordering a member silently rewrites the

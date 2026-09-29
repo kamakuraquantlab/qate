@@ -1,18 +1,21 @@
-"""Trading metrics, written locally as msgpack and read back for export.
+"""The local record of what a strategy did: an append-only log of metric records.
 
-A metric object is the flat list `[measurement, ts, tags, fields]` that
-`qate.core.metric` and the model classes produce. Writing them as msgpack keeps
-the hot path cheap -- a running strategy appends to a local file and never waits
-on a network -- and keeps the run self-contained: everything a backtest emitted
-is on disk next to it, whether or not a database is reachable.
+A metric record is the flat list `[measurement, ts, tags, fields]` that
+`qate.core.metric` and the model classes produce. `MetricLog` buffers them and
+appends them to rotating local msgpack files.
 
-Export is a second, separate step: `qate.store.influx.export_metrics` reads
-these files and writes them to InfluxDB. Local first, export later, is the only
-arrangement in which a metrics backend being down cannot lose a run.
+Local, and nothing but local, is the design. A running strategy appends to a file
+and never waits on a network, and a finished run is self-contained: everything it
+emitted is on disk beside it whether or not any database is reachable. Shipping the
+log somewhere -- InfluxDB for charting, say -- is a later and separate step, done by
+whoever wants it, reading these files back with `read_metrics_dir`. That ordering is
+the only one in which a metrics backend being down cannot lose a run.
 
-Files rotate on a time key and are written as `<prefix>_<key>.msgpack.writing`
-until the rotation closes them, so a reader can tell a finished file from the
-one still being appended to.
+Files rotate on a time key and carry `.writing` until the rotation closes them, so
+a reader can tell a finished file from the one still being appended to.
+
+The msgpack encoding is an implementation detail and the name deliberately does not
+mention it: what this is for is keeping a record.
 """
 
 from dataclasses import dataclass
@@ -34,7 +37,7 @@ WRITING_SUFFIX = SUFFIX + ".writing"
 
 
 @dataclass
-class WriterObject(TimeSeriesData):
+class MetricRecord(TimeSeriesData):
     ts: float
     data: list
 
@@ -60,9 +63,9 @@ def format_rotation_timestamp(ts: float, interval: RotationInterval) -> str:
         raise ValueError(f"Unsupported interval: {interval}")
 
 
-class MsgpackWriter(BufferedWriter):
+class MetricLog(BufferedWriter):
     def __init__(self, rotation_interval: RotationInterval, flush_threshold: int, prefix: str):
-        super(MsgpackWriter, self).__init__(flush_threshold)
+        super(MetricLog, self).__init__(flush_threshold)
         self.rotation_interval = rotation_interval
         self.prefix = prefix
         self.current_time_key = None
@@ -76,7 +79,7 @@ class MsgpackWriter(BufferedWriter):
             self.current_file.close()
             self.current_file = None
 
-    def _write_objects(self, objects: list[WriterObject]):
+    def _write_objects(self, objects: list[MetricRecord]):
         packed_data = b"".join(msgpack.packb(item.data, use_bin_type=True) for item in objects)
         self.current_file.write(packed_data)
 
@@ -111,7 +114,7 @@ class MsgpackWriter(BufferedWriter):
         LOG.info(f"Start new file {file_path}")
         self.current_file = open(file_path, "ab")
 
-    def write(self, buffer: list[WriterObject]):
+    def write(self, buffer: list[MetricRecord]):
         """Write a buffer, rotating wherever its objects cross a time key.
 
         Grouped by consecutive key rather than split once. A buffer can span any
@@ -122,7 +125,7 @@ class MsgpackWriter(BufferedWriter):
         later file, and splitting into two groups put a three-day buffer's middle
         day into the last day's file.
         """
-        run: list[WriterObject] = []
+        run: list[MetricRecord] = []
         run_key: str | None = self.current_time_key
 
         for item in buffer:
@@ -138,7 +141,7 @@ class MsgpackWriter(BufferedWriter):
         if run:
             self._write_run(run_key, run)
 
-    def _write_run(self, time_key: str, objects: list[WriterObject]):
+    def _write_run(self, time_key: str, objects: list[MetricRecord]):
         if time_key != self.current_time_key:
             self._rotate_file(time_key)
         self._write_objects(objects)

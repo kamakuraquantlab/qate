@@ -1,8 +1,11 @@
 """A whole backtest, through the public package only.
 
-Order books in, replayed through the simulator, results on disk. This is the path
-the library exists to support, and it is worth one test that walks all of it
+Order books in, replayed through the simulator, a metric log on disk. This is the
+path the library exists to support, and it is worth one test that walks all of it
 rather than several that each mock the next piece.
+
+It stops at the metric log, because that is where `qate` stops. Turning a run into
+parquet results is the backtester's job and is tested there.
 
 The books are built in memory rather than read from a file. `qate` does not know
 any storage layout -- reading recorded data belongs to whoever owns it -- so a
@@ -18,13 +21,12 @@ from qate.core.model import ExchangeName, Market, Measurement, OrderBook, OrderL
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
 from qate.simulator import ReplayQueue, SimulatorGateway, SyncEventQueue
-from qate.store import metrics, timeseries
+from qate.trading import metric_log
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
 from qate.util.dt_range import DtRange
 
 MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
-DATE = "2026-01-15"
 DEPTH = 5
 START_TS = DtRange.from_strings("20260115", "20260115").start_ts
 
@@ -104,10 +106,10 @@ class BuyThenSell(Strategy):
 MIDS = [15_000_000.0 + n * 10_000 for n in range(6)]
 
 
-def run_backtest(tmp_path) -> tuple[BuyThenSell, timeseries.StrategyStore]:
-    """The whole path: recorded books, through the simulator, into local results.
+def run_backtest(tmp_path) -> BuyThenSell:
+    """The whole path: recorded books, through the simulator, into a metric log.
 
-    Returns the finished strategy and the PnL store, for the caller to assert on.
+    Returns the finished strategy, for the caller to assert on.
     """
     events = make_books(MIDS)
     assert len(events) == len(MIDS)
@@ -122,9 +124,7 @@ def run_backtest(tmp_path) -> tuple[BuyThenSell, timeseries.StrategyStore]:
     trader.add_gateway(gateway)
     trader.register(EventType.MARKET_ORDER_BOOK, gateway.handle_order_book)
 
-    metrics_writer = metrics.MsgpackWriter(metrics.RotationInterval.ONE_DAY, 2, "Metrics")
-    results = timeseries.ResultStore(tmp_path / "results", "example.v1", strategy.get_param_set_id())
-    pnl_store = results.create_pnl(MARKET)
+    metrics_writer = metric_log.MetricLog(metric_log.RotationInterval.ONE_DAY, 2, "Metrics")
 
     collected: list = []
     trader.add_status_listener(_Collector(collected, metrics_writer))
@@ -132,12 +132,12 @@ def run_backtest(tmp_path) -> tuple[BuyThenSell, timeseries.StrategyStore]:
     trader.run()
 
     metrics_writer.close()
-    return strategy, pnl_store
+    return strategy
 
 
-def test_backtest_reads_bronze_fills_orders_and_writes_results(tmp_path, monkeypatch):
+def test_backtest_fills_orders_and_writes_a_metric_log(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    strategy, pnl_store = run_backtest(tmp_path)
+    strategy = run_backtest(tmp_path)
 
     # Every book was accounted for, and the replay ended when the data did with
     # no sentinel appended. Trader.before_loop runs a Warmup that drains the
@@ -156,17 +156,10 @@ def test_backtest_reads_bronze_fills_orders_and_writes_results(tmp_path, monkeyp
     assert sell.exec_price == MIDS[4] - 500  # fifth book's best bid
     assert buy.exec_size == sell.exec_size == BuyThenSell.ORDER_SIZE
 
-    # Results on disk: metrics as msgpack, PnL as parquet.
-    for fill in strategy.fills:
-        pnl_store.add(fill.get_ts(), {"exec_price": fill.exec_price, "side": fill.order_request.side.value})
-    pnl_store.close()
-
-    written = list(metrics.read_metrics_dir(tmp_path, "Metrics"))
+    # The log on disk, readable back with no database anywhere in sight.
+    written = list(metric_log.read_metrics_dir(tmp_path, "Metrics"))
     assert len(written) == strategy.books_seen
     assert {m[0] for m in written} == {Measurement.MARKET_PRICE.value}
-
-    df = pnl_store.read([DATE])
-    assert list(df["exec_price"]) == [buy.exec_price, sell.exec_price]
 
 
 def test_cancelling_an_already_filled_order_is_not_a_fault():
@@ -232,7 +225,7 @@ def test_a_backtest_never_asks_for_an_exchange(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "registered", tripwire)
     monkeypatch.chdir(tmp_path)
 
-    strategy, _ = run_backtest(tmp_path)
+    strategy = run_backtest(tmp_path)
     assert len(strategy.fills) == 2
 
 
@@ -249,6 +242,6 @@ class _Collector:
         (event_type, event) = data
         if event_type == EventType.METRICS:
             for metric_object in event:
-                self.metrics_writer.add(metrics.WriterObject(metric_object[1], metric_object))
+                self.metrics_writer.add(metric_log.MetricRecord(metric_object[1], metric_object))
         elif event_type == EventType.ORDER_FILLED:
             self.orders.append(event)

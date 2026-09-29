@@ -28,11 +28,10 @@ over it. This is the library Enoshima sits on.
 | Package | Holds |
 |---|---|
 | `qate.core` | Event loop, models, order lifecycle, and the interfaces a venue implements |
-| `qate.trading` | Strategy base class, chart and bars, indicators, inventory, PnL, risk |
+| `qate.trading` | Strategy base class, chart and bars, indicators, inventory, PnL, risk, the metric log |
 | `qate.strategy` | Two worked strategies, shipped to be read |
 | `qate.simulator` | The gateway a backtest fills orders against, and the queues that drive it |
 | `qate.exchange` | The adapter contract and registry. No venue lives here |
-| `qate.store` | A run's own output: local metrics, parquet results, InfluxDB export |
 | `qate.env` | Named run directories, and machine-level settings |
 | `qate.boot` | Wiring a strategy, its gateways and its feeds together |
 | `qate.util` | Date ranges, counters, encoding, replay-aware logging |
@@ -76,9 +75,9 @@ asks `komachi` where the files are, reads them, and produces
 `qate.core.model.OrderBook` and `Trade`. Anything that can produce those objects
 works the same way.
 
-`qate.util.dt_range.DtRange` is the shared vocabulary for *when*: it yields ISO
-date partition keys, which is what both the bronze layer and
-`qate.store.timeseries` are laid out by.
+`qate.util.dt_range.DtRange` is the shared vocabulary for *when*: it yields the ISO
+date partition keys the bronze layer is laid out by, so a range maps onto files
+with no conversion.
 
 ## Running a backtest
 
@@ -116,30 +115,23 @@ Two behaviours are worth knowing before reading a result:
 `tests/test_backtest_end_to_end.py` is this whole path in one file, from parquet
 on disk to results on disk, and is the shortest complete example.
 
-## Where a run's results go
+## What a run records
 
-Locally first, always:
-
-```python
-from qate.store import metrics, timeseries
-
-writer = metrics.MsgpackWriter(metrics.RotationInterval.FIVE_MINUTE, 256, "Metrics")
-results = timeseries.ResultStore("./results", "example.v1", param_set_id)
-```
-
-Metrics are appended to local msgpack on the hot path; per-trade PnL and bars go
-to parquet. A database is somewhere to copy results to afterwards, never a
-dependency of producing them, so a run finishes whether or not one is reachable:
-
-```bash
-pip install 'kamakuraquantlab-qate[influx]'
-```
+A local, append-only log of metric records, and nothing else:
 
 ```python
-from qate.store.influx import InfluxdbStore, export_metrics
+from qate.trading.metric_log import MetricLog, RotationInterval
 
-export_metrics("./run_dir", InfluxdbStore(config), bucket_name="my_backtest")
+log = MetricLog(RotationInterval.FIVE_MINUTE, 256, "Metrics")
 ```
+
+A running strategy appends to a file and never waits on a network; a finished run
+is self-contained. Reading it back is `read_metrics_dir`.
+
+Shipping that log anywhere — InfluxDB for charting, parquet for analysis — is a
+later and separate step belonging to whoever wants it. `qate` has no storage layer
+and no database client, which is why a run cannot fail because a backend is down.
+Enoshima is the worked example of the other half.
 
 ## Supplying an exchange
 
@@ -190,10 +182,9 @@ through.
 
 | Extra | Adds |
 |---|---|
-| `influx` | `influxdb-client`, for exporting metrics to a bucket |
 | `fast` | `numba`, which JITs the trade-aggression hot loops |
 
-Neither changes a result. Without `fast`, `qate.trading.aggression` runs the same
+It does not change a result. Without it, `qate.trading.aggression` runs the same
 code unjitted — slower on a long replay, identical in output.
 
 ## Documentation
