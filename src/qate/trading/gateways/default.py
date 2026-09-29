@@ -17,13 +17,9 @@ from qate.core.order import (
 )
 from qate.core.symbol import Symbol
 
-from .exceptions import StopTradingException
+from ..exceptions import StopTradingException
 
 LOG = getLogger(__name__)
-
-
-EVENT_CREATE_ORDER = "EVENT_CREATE_ORDER"
-EVENT_CANCEL_ORDER = "EVENT_CANCEL_ORDER"
 
 
 class DefaultGateway(ExchangeGateway):

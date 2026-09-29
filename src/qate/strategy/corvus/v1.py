@@ -3,7 +3,7 @@ from logging import getLogger
 
 from qate.core.model import EventLoopExit, Market, OrderBook, SettleType, Side
 from qate.core.order import OrderRequest, OrderResponse, OrderType
-from qate.trading.gateway import DefaultGateway
+from qate.trading.gateways import DefaultGateway
 from qate.trading.strategy import Strategy
 
 from .config import Config, OrderInstruction

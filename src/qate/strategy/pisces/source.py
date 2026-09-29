@@ -3,7 +3,7 @@ from logging import getLogger
 from qate.core.model import Market, MarketPrice, OrderBook, SettleType, Side
 from qate.core.order import OrderRequest, OrderResponse, OrderType
 from qate.core.symbol import get_symbol_def
-from qate.trading.gateway import DefaultGateway
+from qate.trading.gateways import DefaultGateway
 from qate.trading.inventory import SpotInventory
 
 LOG = getLogger(__name__)

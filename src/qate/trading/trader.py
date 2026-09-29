@@ -5,9 +5,9 @@ from qate.core.ev_loop import EventLoop
 from qate.core.ev_q import EventQueue
 from qate.core.ev_type import EventType
 from qate.core.feed import MarketDataFeed
+from qate.core.gateway import ExchangeGateway
 from qate.core.model import EventLoopExit
 
-from .gateway import ExchangeGateway
 from .strategy import Strategy
 
 LOG = getLogger(__name__)

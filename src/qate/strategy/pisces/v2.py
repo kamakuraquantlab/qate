@@ -13,7 +13,7 @@ from qate.core.model import (
 )
 from qate.core.order import OrderRequest, OrderResponse, OrderType
 from qate.core.symbol import Symbol
-from qate.trading.gateway import DefaultGateway
+from qate.trading.gateways import DefaultGateway
 from qate.trading.inventory import SpotInventory
 from qate.trading.pnl_tracker import PnlTracker
 from qate.trading.strategy import Strategy

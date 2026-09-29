@@ -16,7 +16,7 @@ from qate.core.order import (
 )
 from qate.core.order_api import OrderApi
 
-from .gateway import DefaultGateway
+from .default import DefaultGateway
 
 LOG = getLogger(__name__)
 
