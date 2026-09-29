@@ -185,4 +185,4 @@ pytest
 
 ## Licence
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE.md](LICENSE.md).

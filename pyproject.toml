@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE.md"]
 authors = [{name = "Kamakura Quant Lab", email = "support@kamakuraquantlab.jp"}]
 keywords = ["backtesting", "quantitative-finance", "market-data", "order-book", "trading"]
 classifiers = [
