@@ -29,9 +29,10 @@ everything that was only in the older module -- `Bar`, `BarChart`, `DataFrameCha
 import json
 from abc import ABC, abstractmethod
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from logging import getLogger
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -241,10 +242,8 @@ class BaseBarBuilder:
         self.state = _State()
 
     def _update(self, trade: Trade):
-        if trade.price > self.state.high:
-            self.state.high = trade.price
-        if trade.price < self.state.low:
-            self.state.low = trade.price
+        self.state.high = max(self.state.high, trade.price)
+        self.state.low = min(self.state.low, trade.price)
         self.state.volume += trade.size
 
     def on_update(self, trade: Trade) -> Bar:
@@ -324,7 +323,7 @@ class BarChart:
         self.max_len = max_len
         self.prefix = prefix + "_" if prefix else ""
         self.data_list: deque[Bar] = deque(maxlen=max_len)
-        self._indicators: dict[str, "Indicator"] = {}
+        self._indicators: dict[str, Indicator] = {}
         self._indicator_values: dict[str, deque] = {}
 
     def add_indicator(self, name: str, indicator: "Indicator"):
@@ -341,9 +340,8 @@ class BarChart:
             try:
                 value = indicator.compute(self.data_list)
                 self._indicator_values[name].append(value)
-            except Exception as e:
-                LOG.error(f"Error computing indicator {name}")
-                LOG.exception(e)
+            except Exception:
+                LOG.exception(f"Error computing indicator {name}")
                 # Append None to maintain alignment between bars and indicator values
                 self._indicator_values[name].append(None)
 
@@ -409,9 +407,8 @@ class DataFrameChart:
         for name, func in self._indicator_funcs.items():
             try:
                 self._indicator_values[name] = func(df)
-            except Exception as e:
-                LOG.error(f"Error computing indicator {name}")
-                LOG.exception(e)
+            except Exception:
+                LOG.exception(f"Error computing indicator {name}")
 
     # idx=0: latest, idx=1: second latest, etc.
     def get_values(self, idx=0) -> dict:

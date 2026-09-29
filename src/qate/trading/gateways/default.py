@@ -41,9 +41,8 @@ class DefaultGateway(QueuedGateway):
             order_id = self.api.create_order(order_request)
         except StopTradingException:
             raise
-        except Exception as e:
-            LOG.error("Failed to create order")
-            LOG.exception(e)
+        except Exception:
+            LOG.exception("Failed to create order")
 
         if order_id is None:
             self.publish_order_error(OrderResponse(order_request, error=OrderError.CREATE))
@@ -118,8 +117,8 @@ class CheckOrderStatusCallable:
             symbol = order_tracker.order_request.market.symbol
             try:
                 exchange_order = caller.api.fetch_order(order_tracker.order_id, symbol)
-            except Exception as e:
-                LOG.warning(f"fetch_order error, will retry: {e.__class__.__name__}: {e}")
+            except Exception:
+                LOG.warning("fetch_order error, will retry", exc_info=True)
                 return
             if not exchange_order:
                 continue

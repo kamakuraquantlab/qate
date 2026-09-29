@@ -96,8 +96,8 @@ class UpdateParamsTask:
                 new_params = json.load(f)
         except FileNotFoundError:
             return
-        except Exception as exc:  # pragma: no cover - defensive
-            LOG.error("Failed to load %s: %s", self.PARAM_FILE, exc)
+        except Exception:  # pragma: no cover - defensive
+            LOG.exception("Failed to load %s", self.PARAM_FILE)
             return
 
         if not isinstance(new_params, dict):
