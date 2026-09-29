@@ -101,6 +101,15 @@ abstract base class cannot give.
 - **Every `date=` partition is an Asia/Tokyo day**, 15:00–14:59 UTC, and the
   timestamps inside the files are UTC epochs. `DtRange.days` already produces
   these keys; do not convert.
+- **A bar builder is a closer plus a creator.** `qate.trading.chart` composes
+  *when a bar ends* with *what the bar is*, which is what makes
+  `HeikinAshiRangeBarBuilder` expressible; an inheritance hierarchy could not
+  express it and that is why there was once a `chart2.py`. Add a combination by
+  pairing existing pieces, not by subclassing a builder.
+- **`RangeBarBuilder._box` has a property setter on purpose.** A live strategy
+  assigns it directly. The box size lives on the closer now, so without the
+  forwarding setter that assignment would land on an unused attribute and the box
+  size would silently never change. `set_box_size` is the supported way.
 - **`numba` is optional, and `qate.trading.aggression` must keep working
   without it.** It pins hard against numpy's ABI and lags each new numpy release,
   so requiring it would make the package uninstallable on a current numpy for a

@@ -28,7 +28,7 @@ over it. This is the library Enoshima sits on.
 | Package | Holds |
 |---|---|
 | `qate.core` | Event loop, models, order lifecycle, and the interfaces a venue implements |
-| `qate.trading` | Strategy base class, chart and bars, indicators, inventory, PnL, risk, the metric log |
+| `qate.trading` | Strategy base class, bars and charts, indicators, inventory, PnL, risk, the metric log |
 | `qate.strategy` | Two worked strategies, shipped to be read |
 | `qate.simulator` | The gateway a backtest fills orders against, and the queues that drive it |
 | `qate.exchange` | The adapter contract and registry. No venue lives here |
