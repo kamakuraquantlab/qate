@@ -20,7 +20,7 @@ from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, Measurement, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
-from qate.simulator import ReplayQueue, SimulatorGateway, SyncEventQueue
+from qate.simulator import ReplayQueue, SimulatorGateway
 from qate.trading import metric_log
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
@@ -118,7 +118,6 @@ def run_backtest(tmp_path) -> BuyThenSell:
     # A strategy, a simulator standing in for GMO, and one thread.
     strategy = BuyThenSell()
     gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
-    gateway.set_event_queue(SyncEventQueue(gateway.handlers))
 
     trader = Trader(strategy, ReplayQueue(events))
     trader.add_gateway(gateway)
@@ -174,7 +173,6 @@ def test_cancelling_an_already_filled_order_is_not_a_fault():
     grounds to stop trading, which would turn an unnecessary cancel into a halt.
     """
     gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
-    gateway.set_event_queue(SyncEventQueue(gateway.handlers))
 
     errors: list = []
     gateway.add_order_listener(_ErrorCollector(errors))

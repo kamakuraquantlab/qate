@@ -1,7 +1,19 @@
+"""The gateway a backtest fills orders against.
+
+Satisfies `qate.core.gateway.ExchangeGateway` with no thread and no queue:
+`create()` records the order and returns, and the order is matched by the next
+order book handed to `handle_order_book`. Everything happens inside the caller's
+call, which is what makes a replay deterministic and single-threaded.
+
+That is also why there is no `set_event_queue` any more. This used to inherit an
+event loop from the contract, so a backtest had to pass it a queue that dispatched
+synchronously in order to get fills inside the strategy's own call. The contract no
+longer carries a loop, so the workaround is gone.
+"""
+
 from itertools import count
 from logging import getLogger
 
-from qate.core.ev_type import EventType
 from qate.core.feed import MarketDataFeed
 from qate.core.gateway import ExchangeGateway
 from qate.core.model import ExchangeName, MarketPrice, OrderBook, Side
@@ -39,7 +51,7 @@ class SimulatorGateway(ExchangeGateway):
             immediate_fill: If True, fill taker orders at requested price (for testing only)
                            Default False uses market price + slippage
         """
-        super(SimulatorGateway, self).__init__(None)
+        super(SimulatorGateway, self).__init__()
         self._exchange_name = exchange_name
         self.slippage_rate = slippage_rate
         self.immediate_fill = immediate_fill
@@ -49,17 +61,17 @@ class SimulatorGateway(ExchangeGateway):
         self.order_books: dict[str, OrderBook] = {}
         self.now_ts: float | None = None
 
-        self.register(EventType.MARKET_ORDER_BOOK, self.handle_order_book)
-
     @property
     def exchange_name(self) -> ExchangeName:
         return self._exchange_name
 
-    def set_event_queue(self, event_queue):
-        self.event_queue = event_queue
-
     def subscribe_market_data_feed(self, market_feed: MarketDataFeed):
-        market_feed.add_order_book_listener(self.event_queue)
+        """Take books straight from a live feed, for paper trading.
+
+        A replay does not use this: the driver hands books to
+        `handle_order_book` itself, in the same pass that reaches the strategy.
+        """
+        market_feed.add_order_book_listener(_OrderBookSink(self))
 
     def handle_order_book(self, order_book: OrderBook):
         if order_book.market.exchange_name != self.exchange_name:
@@ -160,14 +172,19 @@ class SimulatorGateway(ExchangeGateway):
         del self.orders[order_tracker.order_request.ctx_id]
         self.publish_order_filled(order_tracker.filled_response())
 
-    def handle_create_order(self, order_request: OrderRequest):
+    def create(self, order_request: OrderRequest):
+        """Record the order. It is matched by the next order book, not by this call.
+
+        That one-book delay is the latency model: an order cannot be filled by the
+        snapshot the strategy was looking at when it decided.
+        """
         self.now_ts = order_request.ts
         order_id = self.order_id.next()
         order_tracker = OrderTracker(order_request, order_id, self.now_ts)
         self.orders[order_request.ctx_id] = order_tracker
         self.publish_order_created(order_tracker.created_response())
 
-    def handle_cancel_order(self, order_request: OrderRequest):
+    def cancel(self, order_request: OrderRequest):
         if order_request.ctx_id not in self.orders:
             # The order already completed. This is the ordinary fill/cancel race,
             # not a fault: an order can be matched against a book and the strategy
@@ -188,3 +205,20 @@ class SimulatorGateway(ExchangeGateway):
 
     def fetch_balance_sync(self, symbol):
         return {"base": 999999999.0, "quote": 999999999.0}
+
+
+class _OrderBookSink:
+    """Adapts the gateway to the `EventQueue` shape a `MarketDataFeed` publishes to.
+
+    Only the paper-trading path needs it: a live feed pushes `(event_type, book)`
+    tuples at a queue, and the simulator wants the book.
+    """
+
+    def __init__(self, gateway: "SimulatorGateway"):
+        self._gateway = gateway
+
+    def put(self, event) -> None:
+        if not event:
+            return
+        (_event_type, order_book) = event
+        self._gateway.handle_order_book(order_book)

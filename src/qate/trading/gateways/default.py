@@ -5,7 +5,6 @@ from logging import getLogger
 from qate.core.api import Api
 from qate.core.ev_type import EventType
 from qate.core.feed import ExchangeFeed
-from qate.core.gateway import ExchangeGateway
 from qate.core.order import (
     ExchangeExecution,
     ExchangeOrder,
@@ -18,11 +17,12 @@ from qate.core.order import (
 from qate.core.symbol import Symbol
 
 from ..exceptions import StopTradingException
+from .queued import QueuedGateway
 
 LOG = getLogger(__name__)
 
 
-class DefaultGateway(ExchangeGateway):
+class DefaultGateway(QueuedGateway):
     def __init__(self, api: Api, heartbeat_interval_ts: float = 3.0):
         super(DefaultGateway, self).__init__(api, heartbeat_interval_ts)
         self.exchange_orders: dict[str, OrderTracker] = {}
