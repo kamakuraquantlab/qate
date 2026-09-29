@@ -43,12 +43,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# numba JITs the trade-aggression hot loops. Optional because numba pins hard
-# against numpy's ABI and lags each new numpy release; qate.trading.aggression
-# falls back to the same code unjitted.
-fast = [
-    "numba>=0.60",
-]
 dev = [
     "pytest>=8.0",
     "ruff>=0.1",

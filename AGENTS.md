@@ -49,6 +49,14 @@ Two tests hold this, and both are worth understanding before changing them:
 | A way of reading recorded market data | the replayer (Enoshima) | here |
 | A way of storing a run's output | the tool that produces it (Enoshima) | here |
 
+**Every module here has a consumer here.** Three sweeps have now removed code that
+was in this package only because it was in the private library it came from:
+`qate.store`'s parquet and InfluxDB layers, `chart2.py`, and the feature-engineering
+and risk modules in `qate.trading`. Before adding a module, name what in this
+package or in Enoshima will import it. Before keeping one, check that something
+still does — and check `qate-exchanges` too, which also depends on this package and
+which one of those sweeps nearly broke.
+
 **`qate` does not read market data and does not know where it lives.** A replayer
 hands it events. This was not the original shape: there was a `qate.data.bronze`
 that globbed the tree and duplicated `komachi.bronze`'s answers about which days
@@ -110,11 +118,6 @@ abstract base class cannot give.
   assigns it directly. The box size lives on the closer now, so without the
   forwarding setter that assignment would land on an unused attribute and the box
   size would silently never change. `set_box_size` is the supported way.
-- **`numba` is optional, and `qate.trading.aggression` must keep working
-  without it.** It pins hard against numpy's ABI and lags each new numpy release,
-  so requiring it would make the package uninstallable on a current numpy for a
-  speedup most readers do not need. The fallback `jit` is a pass-through; the
-  decorated functions are plain loops and are correct unjitted.
 - **Fail fast.** Do not add runtime guards for logic bugs. Check only for
   dynamic errors: a missing file, an empty book, a network fault.
 

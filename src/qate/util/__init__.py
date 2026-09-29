@@ -4,7 +4,6 @@
 the tools accept and yields the ISO date partition keys the bronze layer is laid
 out by, so a range maps onto files without anyone converting anything.
 
-`logging.set_now` makes log records carry the replayed clock rather than wall
-time, which is what lets a backtest's log be read against the market it was
-replaying.
+`counter` accumulates running statistics, `encoder` is the JSON encoder the env
+files are written with.
 """

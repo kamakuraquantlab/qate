@@ -178,15 +178,6 @@ A backtest asks for no credential. `qate.env.sys_env` raises
 an unauthenticated call, so a live run fails at startup instead of part way
 through.
 
-## Extras
-
-| Extra | Adds |
-|---|---|
-| `fast` | `numba`, which JITs the trade-aggression hot loops |
-
-It does not change a result. Without it, `qate.trading.aggression` runs the same
-code unjitted — slower on a long replay, identical in output.
-
 ## Documentation
 
 | Document | Read it when |
