@@ -26,7 +26,7 @@ from qate.core.order import OrderRequest
 class QueuedGateway(ExchangeGateway, EventLoop):
     """An `ExchangeGateway` that defers its work to its own event loop."""
 
-    def __init__(self, api: Api, heartbeat_interval_ts: float = None):
+    def __init__(self, api: Api, heartbeat_interval_ts: float | None = None):
         # Each base once, by name. This used to run EventLoop, StatusFeed and
         # Thread twice: the second call entered OrderFeed, whose cooperative
         # `super()` continued along this instance's MRO and reached EventLoop again.

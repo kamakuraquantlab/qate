@@ -1,9 +1,10 @@
 import asyncio
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from logging import getLogger
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from qate.core.ev_type import EventType
 from qate.core.order import (
@@ -143,7 +144,7 @@ class DefaultGatewayAsync(DefaultGateway):
         try:
             future = asyncio.run_coroutine_threadsafe(self._order_api.aclose(), self._async_loop)
             future.result(timeout=5)
-        except Exception:  # noqa: BLE001 - surface later during stop
+        except Exception:
             LOG.debug("order_api.aclose failed", exc_info=True)
 
         self._async_loop.call_soon_threadsafe(self._async_loop.stop)

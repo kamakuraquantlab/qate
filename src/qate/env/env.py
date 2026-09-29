@@ -207,9 +207,8 @@ echo "Warning: Process may still be running"
 
     def save_object(self, file_name: str, object: Any, forced=False) -> str:
         file = os.path.join(self.work_dir, file_name)
-        if os.path.isfile(file):
-            if not forced:
-                raise Exception(f"{file} exists")
+        if os.path.isfile(file) and not forced:
+            raise Exception(f"{file} exists")
         with open(file, "w", encoding="utf-8") as f:
             json.dump(object, f, cls=Encoder, indent=2, sort_keys=True)
         return file
