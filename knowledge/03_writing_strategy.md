@@ -50,7 +50,7 @@ The constructor takes exactly two arguments, and the split between them matters:
   optimize sweep varies.
 
 Put a tunable in `config` and it cannot be swept. Put a market in `params` and
-every combination reloads the data. See [env.md §5](env.md#5-config-discovery) for
+every combination reloads the data. See [02_env.md §5](02_env.md#5-config-discovery) for
 how the env loads both.
 
 ## 3 The two rules that break a backtest silently
@@ -58,7 +58,7 @@ how the env loads both.
 **Time comes from the event.** Set `self.now_ts` from each event's timestamp and
 use it everywhere. A strategy that calls `time.time()` still runs and still
 produces numbers — it is comparing a wall clock against replayed prices. See
-[philosophy.md §3](philosophy.md#3-never-use-timetime-in-strategies).
+[01_philosophy.md §3](01_philosophy.md#3-never-use-timetime-in-strategies).
 
 **Warmup is not trading.** `warmup_order_book` and `warmup_trade` fill history
 until `is_ready` returns True; nothing before that should place an order. Deciding
@@ -105,8 +105,7 @@ see [../AGENTS.md](../AGENTS.md).
 
 | Read | For |
 |---|---|
-| `qate.strategy.corvus` | The order lifecycle alone: place, reprice, cancel, fill, stop |
-| `qate.strategy.pisces` | A real idea, and what startup, inventory and shutdown cost |
-| [pisces.md](pisces.md) | Why pisces is built the way it is |
+| [05_corvus.md](05_corvus.md) | The order lifecycle alone: place, reprice, cancel, fill, stop |
+| [04_pisces.md](04_pisces.md) | A real idea, and what startup, inventory and shutdown cost |
 
 Start with corvus. It has no signal, so what remains is the machinery.

@@ -73,7 +73,7 @@ abstract base class cannot give.
   trading live needs an adapter. `SimulatorGateway` reports unlimited balances, so
   pisces's rebalance paths only run against a real account, and the docs say so.
 - `tests/test_example_strategies.py` checks they still load, construct, and match
-  the config and params tables in `knowledge/strategies.md`. Example code that no
+  the config and params tables in `knowledge/04_pisces.md`. Example code that no
   longer runs is worse than no example.
 
 ## Facts worth knowing before editing

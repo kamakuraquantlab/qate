@@ -22,5 +22,5 @@ sub-accounts, so a strategy shares a balance with everything else in the account
 and cannot assume the state it left behind. It fetches real balances, works out
 whether it can start, and writes a rebalance plan for `corvus` when it cannot.
 
-Read `knowledge/pisces.md` for why each of those decisions is the way it is.
+Read `knowledge/04_pisces.md` for why each of those decisions is the way it is.
 """

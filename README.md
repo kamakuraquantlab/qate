@@ -58,9 +58,10 @@ Neither is tuned and neither is a recommendation. Backtesting them needs nothing
 but `qate`; trading them live needs an exchange adapter, which is a separate
 install by design.
 
-See [knowledge/strategies.md](knowledge/strategies.md), and
-[knowledge/strategy_layout.md](knowledge/strategy_layout.md) for the `Variant`
-contract to write your own.
+See [knowledge/05_corvus.md](knowledge/05_corvus.md) and
+[knowledge/04_pisces.md](knowledge/04_pisces.md), and
+[knowledge/03_writing_strategy.md](knowledge/03_writing_strategy.md) for the
+`Variant` contract to write your own.
 
 ## Market data comes from outside
 
@@ -199,11 +200,11 @@ code unjitted — slower on a long replay, identical in output.
 
 | Document | Read it when |
 |---|---|
-| [knowledge/philosophy.md](knowledge/philosophy.md) | Deciding whether to add a check, a test, or a comment |
-| [knowledge/strategy_layout.md](knowledge/strategy_layout.md) | Writing a strategy: the `Variant` contract, config vs params |
-| [knowledge/strategies.md](knowledge/strategies.md) | Reading the two shipped strategies |
-| [knowledge/pisces.md](knowledge/pisces.md) | Why pisces is built the way it is |
-| [knowledge/env.md](knowledge/env.md) | Environments: the directory, the lock, config discovery |
+| [knowledge/01_philosophy.md](knowledge/01_philosophy.md) | Deciding whether to add a check, a test, or a comment |
+| [knowledge/02_env.md](knowledge/02_env.md) | Environments: the directory, the lock, config discovery |
+| [knowledge/03_writing_strategy.md](knowledge/03_writing_strategy.md) | Writing a strategy: the `Variant` contract, config vs params |
+| [knowledge/04_pisces.md](knowledge/04_pisces.md) | Cross-exchange arbitrage: startup, rebalance, shutdown |
+| [knowledge/05_corvus.md](knowledge/05_corvus.md) | Single-shot order execution — the order lifecycle alone |
 
 ## Development
 

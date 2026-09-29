@@ -141,7 +141,7 @@ def test_pisces_replays_both_venues_of_every_pair():
 
 @pytest.mark.parametrize("variant", ["v1", "v2"])
 def test_pisces_constructs_from_its_documented_params(variant):
-    """The params table in knowledge/strategies.md is what a run actually passes."""
+    """The params table in knowledge/04_pisces.md is what a run actually passes."""
     params = {
         "default_profit_margin_percentage": 0.0007,
         "transfer_profit_margin_percentage": 0.0001,

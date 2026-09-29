@@ -11,5 +11,5 @@ to get right. As a tool, it is what executes a rebalance `pisces` has asked for 
 a human reviews the file, then corvus does what it says and nothing else.
 
 `config.Config.from_jsonl` reads the file, splitting anything larger than the
-venue's `MAX_ORDER_SIZE` into chunks.
+venue's `MAX_ORDER_SIZE` into chunks. Design notes: `knowledge/05_corvus.md`.
 """

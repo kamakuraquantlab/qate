@@ -37,6 +37,7 @@ account.
 Trading either of them live needs an exchange adapter, which is a separate install
 by design — see `qate.exchange`.
 
-Design notes are in `knowledge/pisces.md`, and the `Variant` contract both of these
-implement is in `knowledge/strategy_layout.md`.
+Design notes are in `knowledge/04_pisces.md` and `knowledge/05_corvus.md`, and the
+`Variant` contract both of these implement is in
+`knowledge/03_writing_strategy.md`.
 """

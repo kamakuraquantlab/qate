@@ -5,11 +5,14 @@ Full detail. [README.md](../README.md) is the overview and
 
 | Document | Read it when |
 |---|---|
-| [philosophy.md](philosophy.md) | Deciding whether to add a check, a test, or a comment |
-| [strategy_layout.md](strategy_layout.md) | Writing a strategy: the `Variant` contract, config vs params |
-| [strategies.md](strategies.md) | Reading the two worked strategies `qate` ships |
-| [pisces.md](pisces.md) | Why pisces is built the way it is — startup, rebalance, shutdown |
-| [env.md](env.md) | Environments: the directory, the lock, logging, config discovery |
+| [01_philosophy.md](01_philosophy.md) | Deciding whether to add a check, a test, or a comment |
+| [02_env.md](02_env.md) | Environments: the directory, the lock, logging, config discovery |
+| [03_writing_strategy.md](03_writing_strategy.md) | Writing a strategy: the `Variant` contract, config vs params |
+| [04_pisces.md](04_pisces.md) | Cross-exchange arbitrage: startup, rebalance, shutdown |
+| [05_corvus.md](05_corvus.md) | Single-shot order execution — the order lifecycle alone |
+
+One document per subject, numbered in reading order. 04 and 05 are the two worked
+strategies `qate` ships; read 05 first, it is the smaller.
 
 ## Conventions
 
