@@ -18,7 +18,7 @@ defeat.
 """
 
 from collections import deque
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 from qate.core.ev_q import EventQueue
 from qate.core.model import TimeSeriesData

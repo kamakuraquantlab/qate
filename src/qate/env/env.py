@@ -218,7 +218,7 @@ echo "Warning: Process may still be running"
 
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError:
+        except OSError:
             # Failed to acquire lock, close and exit without modifying anything
             lock_fd.close()
             raise RuntimeError("Another process is already running.")
@@ -232,19 +232,13 @@ echo "Warning: Process may still be running"
 
     def unlock(self):
         if hasattr(self, "lock_fd") and self.lock_fd:
-            try:
-                # Release the lock
-                fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
-                self.lock_fd.close()
-            except Exception:
-                pass
+            # Release the lock
+            fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
+            self.lock_fd.close()
 
             lock_file = os.path.join(self.work_dir, LOCK_FILE)
             if os.path.exists(lock_file):
-                try:
-                    os.remove(lock_file)
-                except Exception:
-                    pass
+                os.remove(lock_file)
 
     def add_enum_to_hooks(self, enum):
         self.hooks[enum] = lambda x: enum[x]
@@ -278,7 +272,7 @@ echo "Warning: Process may still be running"
         cls,
         root_dir: str,
         env_name: EnvName,
-        objects: dict[str, Any] = None,
+        objects: dict[str, Any] | None = None,
     ) -> "Env":
         """Create an environment and write one `<key>.json` per object given."""
         env = cls(root_dir, env_name)

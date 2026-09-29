@@ -31,9 +31,7 @@ class PendingOrder:
             return True
         if abs(self.placed_price - target_price) < EPSILON:
             return True
-        if now_ts - self.placed_at < reprice_interval:
-            return True
-        return False
+        return now_ts - self.placed_at < reprice_interval
 
 
 class Variant(Strategy[Config]):

@@ -15,7 +15,7 @@ a strategy is actually written against.
 | `metrics` | Emitting metrics, and the local append-only log they are recorded in |
 | `param` | `ParamGrid`: the defaults, and the values a sweep walks |
 | `exceptions` | `StopTradingException`, `ApiException` |
-| `chat` | The interface a chat notifier implements. No implementation here |
+| `reporter` | `Reporter`: where a run's outcomes are published. No implementation here |
 
 ## Writing a strategy
 

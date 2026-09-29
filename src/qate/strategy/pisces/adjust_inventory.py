@@ -250,13 +250,12 @@ def plan_multi_allocation(
 
 def write_rebalance_file(steps: list[RebalanceStep], path: str = "rebalance.jsonl"):
     with open(path, "w") as f:
-        for step in steps:
-            f.write(json.dumps({
+        f.writelines(json.dumps({
                 "exchange": step.exchange.name,
                 "symbol": step.symbol.name,
                 "side": step.side.name,
                 "amount": round(step.amount, 8),
-            }) + "\n")
+            }) + "\n" for step in steps)
     LOG.error(f"Rebalance steps written to {path} — review it, then execute it with corvus")
 
 

@@ -115,6 +115,29 @@ Two behaviours are worth knowing before reading a result:
 `tests/test_backtest_end_to_end.py` is this whole path in one file, from parquet
 on disk to results on disk, and is the shortest complete example.
 
+## Reporting a run as it happens
+
+A `MetricLog` records everything for later; a `Reporter` is the other direction —
+the few things a person wants to see while a strategy runs.
+
+```python
+from qate.trading.reporter import Reporter
+
+class Printer(Reporter):
+    def on_order(self, order_response):
+        print(order_response.summary)
+
+bootstrap.add_reporter(Printer())
+```
+
+One method per kind of outcome — `on_order`, `on_pnl_update`, `on_summary`,
+`on_exception`, `on_message`, `on_start`, `on_stop` — and every one is a no-op by
+default, so implement what you care about. Several reporters can be added and each
+sees everything. A reporter that raises is logged and ignored: a run does not
+depend on anyone being told.
+
+No implementation ships here. K2's `DiscordReporter` is one.
+
 ## What a run records
 
 A local, append-only log of metric records, and nothing else:

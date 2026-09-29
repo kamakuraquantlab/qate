@@ -51,7 +51,7 @@ class SimulatorGateway(ExchangeGateway):
             immediate_fill: If True, fill taker orders at requested price (for testing only)
                            Default False uses market price + slippage
         """
-        super(SimulatorGateway, self).__init__()
+        super().__init__()
         self._exchange_name = exchange_name
         self.slippage_rate = slippage_rate
         self.immediate_fill = immediate_fill

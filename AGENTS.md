@@ -118,6 +118,10 @@ abstract base class cannot give.
   assigns it directly. The box size lives on the closer now, so without the
   forwarding setter that assignment would land on an unused attribute and the box
   size would silently never change. `set_box_size` is the supported way.
+- **A reporter is the one place that swallows exceptions.** `Bootstrap._report`
+  logs and continues, because nothing about a trading decision depends on anyone
+  being told and an unreachable webhook must not take a live strategy down. That is
+  deliberately the opposite of the rule below; do not copy the pattern elsewhere.
 - **Fail fast.** Do not add runtime guards for logic bugs. Check only for
   dynamic errors: a missing file, an empty book, a network fault.
 
