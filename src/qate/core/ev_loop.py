@@ -1,10 +1,10 @@
 import queue
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import count
 from logging import getLogger
-from typing import Callable
 
 from .ev_q import EventQueue
 from .ev_type import EventType
@@ -43,7 +43,11 @@ EVENT_ADD_TASK = "EVENT_ADD_TASK"
 
 class EventLoop(StatusFeed, threading.Thread):
     def __init__(self, event_queue: EventQueue = None, heartbeat_interval: float | None = None):
-        super(EventLoop, self).__init__()
+        # Both bases by name, because neither is cooperative: Thread takes its own
+        # arguments, and the feed mixins deliberately do not chain. See
+        # qate.core.feed for why.
+        threading.Thread.__init__(self)
+        StatusFeed.__init__(self)
         self.event_queue = create_event_queue() if not event_queue else event_queue
         self.handlers: dict[str, list] = {}
         if heartbeat_interval is not None and heartbeat_interval < 0.1:
@@ -97,7 +101,7 @@ class EventLoop(StatusFeed, threading.Thread):
             self.publish_status(EventType.EXCEPTION, e)
             return False
         except BaseException as e:
-            LOG.exception(e)
+            LOG.exception()
             self.publish_status(EventType.EXCEPTION, e)
         return True
 

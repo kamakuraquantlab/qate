@@ -17,6 +17,7 @@ the loop's thread. `DefaultGateway` is the one that calls a blocking REST api;
 
 from qate.core.api import Api
 from qate.core.ev_loop import EventLoop
+from qate.core.feed import OrderFeed
 from qate.core.gateway import EVENT_CANCEL_ORDER, EVENT_CREATE_ORDER, ExchangeGateway
 from qate.core.model import ExchangeName
 from qate.core.order import OrderRequest
@@ -26,8 +27,11 @@ class QueuedGateway(ExchangeGateway, EventLoop):
     """An `ExchangeGateway` that defers its work to its own event loop."""
 
     def __init__(self, api: Api, heartbeat_interval_ts: float = None):
+        # Each base once, by name. This used to run EventLoop, StatusFeed and
+        # Thread twice: the second call entered OrderFeed, whose cooperative
+        # `super()` continued along this instance's MRO and reached EventLoop again.
         EventLoop.__init__(self, None, heartbeat_interval_ts)
-        ExchangeGateway.__init__(self)
+        OrderFeed.__init__(self)
         self.api = api
 
         self.register(EVENT_CREATE_ORDER, self.handle_create_order)
