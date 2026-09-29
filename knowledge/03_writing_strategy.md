@@ -92,8 +92,12 @@ class TradingProfile:
     strategy_module_name: str   # e.g. "qate.strategy.pisces", or "my_strategy"
     variant: str = "v0"         # file name without .py
     trading_config_key: str = "DEFAULT"
-    chat_config_key: str | None = None
+    reporter_config_key: str | None = None
 ```
+
+`reporter_config_key` names the credentials a runner should build a
+[`Reporter`](../src/qate/trading/reporter.py) from — leave it out for a backtest,
+which reports to nobody. `qate` itself never reads it; the runner does.
 
 `strategy_name` returns `"{module}.{variant}"`, which is what appears in run logs
 and in the partition path of a result. `strategy_module_name` is also how

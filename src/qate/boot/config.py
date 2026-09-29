@@ -57,7 +57,14 @@ class TradingProfile:
     strategy_module_name: str | None = None
     variant: str = "v0"
     trading_config_key: str = "DEFAULT"
-    chat_config_key: str | None = None
+    reporter_config_key: str | None = None
+    """Which credentials a `Reporter` should be built from, if any.
+
+    Named after `Reporter`, not after Discord or chat. The field was
+    `chat_config_key` when the only destination was a chat bot; the destination is
+    now whatever the runner decides to add, and a name that says "chat" would send
+    every reader looking for a chat interface that no longer exists.
+    """
 
     @property
     def strategy_name(self):
