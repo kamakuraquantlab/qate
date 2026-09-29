@@ -9,8 +9,8 @@ venue, and lives there.
 
 The split is deliberate and is what makes this package safe to publish: a
 `qate` install carries no venue endpoint and no WebSocket client, so there is
-nothing here that can be pointed at a live exchange. `qate.simulator` is the
-only feed this package can produce on its own.
+nothing here that can be pointed at a live exchange. A replayed feed is the
+only one this package can produce on its own.
 """
 
 from abc import ABC, abstractmethod

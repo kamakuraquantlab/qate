@@ -5,6 +5,19 @@ Satisfies `qate.core.gateway.ExchangeGateway` with no thread and no queue:
 order book handed to `handle_order_book`. Everything happens inside the caller's
 call, which is what makes a replay deterministic and single-threaded.
 
+It reaches nothing. Fills come from the order books fed into it, so a backtest is
+offline by construction rather than by configuration.
+
+It simulates a *named* exchange -- `SimulatorGateway(ExchangeName.GMO)` -- so a
+strategy is exercised against the same symbols, tick sizes and lot sizes it will
+meet in production.
+
+It sits beside the live gateways rather than in a package of its own because being
+a simulator is not a different kind of thing: it is a fourth way of satisfying one
+contract, and the only one this package can offer by itself. Keeping it here is
+what stops `ExchangeGateway` from quietly growing a thread again -- the interface
+has to fit an implementation that has none.
+
 That is also why there is no `set_event_queue` any more. This used to inherit an
 event loop from the contract, so a backtest had to pass it a queue that dispatched
 synchronously in order to get fills inside the strategy's own call. The contract no

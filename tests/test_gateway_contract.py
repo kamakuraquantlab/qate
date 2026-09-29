@@ -13,8 +13,7 @@ from qate.core.gateway import ExchangeGateway
 from qate.core.model import ExchangeName, Market, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
-from qate.simulator import SimulatorGateway
-from qate.trading.gateways import DefaultGateway, QueuedGateway
+from qate.trading.gateways import DefaultGateway, QueuedGateway, SimulatorGateway
 
 MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
 TS = 1767225600.0

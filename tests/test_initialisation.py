@@ -22,8 +22,7 @@ import pytest
 from qate.core import ev_loop, feed
 from qate.core.api import Api
 from qate.core.model import ExchangeName
-from qate.simulator import SimulatorGateway
-from qate.trading.gateways import DefaultGateway, QueuedGateway
+from qate.trading.gateways import DefaultGateway, QueuedGateway, SimulatorGateway
 from qate.trading.reporter import Reporter
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader

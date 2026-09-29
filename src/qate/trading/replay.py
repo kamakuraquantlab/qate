@@ -9,6 +9,17 @@ reason not to be, since two runs of the same data must produce the same result.
 order, and the strategy's own events ahead of them, so the same `Trader` and
 `Strategy` code runs unchanged.
 
+It lives beside `trader.py` because the trader is what drains it, and because it
+is the second implementation of `qate.core.ev_q.EventQueue` -- the first being the
+`queue.Queue` that `qate.core.ev_loop.create_event_queue` hands a live run. Which
+of the two a `Trader` gets is the only difference between replaying and trading.
+
+A replayer with a real data layout will have its own: Enoshima reads bronze
+parquet in chunks shared between concurrent runs, so its `Channel` pulls from a
+shared buffer rather than from an iterator. `ReplayQueue` is the plain one, and it
+is what makes a backtest expressible with nothing but this package installed --
+hand it a list of events and `tests/test_backtest_end_to_end.py` runs.
+
 There used to be a second class here, `SyncEventQueue`, which made a gateway
 dispatch in place rather than on its own thread. It existed because the gateway
 contract extended `EventLoop`, so a backtest had to hand the gateway a fake queue

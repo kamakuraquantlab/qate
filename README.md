@@ -28,9 +28,8 @@ over it. This is the library Enoshima sits on.
 | Package | Holds |
 |---|---|
 | `qate.core` | Event loop, models, order lifecycle, and the interfaces a venue implements |
-| `qate.trading` | Strategy base class, bars and charts, indicators, inventory, PnL, risk, the metric log |
+| `qate.trading` | Strategy base class, gateways (live and simulated), the replay queue, bars and charts, indicators, inventory, PnL, the metric log |
 | `qate.strategy` | Two worked strategies, shipped to be read |
-| `qate.simulator` | The gateway a backtest fills orders against, and the queues that drive it |
 | `qate.exchange` | The adapter contract and registry. No venue lives here |
 | `qate.env` | Named run directories, and machine-level settings |
 | `qate.boot` | Wiring a strategy, its gateways and its feeds together |
@@ -82,19 +81,19 @@ with no conversion.
 ## Running a backtest
 
 A replay is single-threaded on purpose: the events already exist, in order, and
-two runs of the same data must give the same result. Two queues collapse the live
-threading into one loop, so the same `Trader`, `Strategy` and gateway code runs
-unchanged:
+two runs of the same data must give the same result. One queue in place of the
+live ones collapses the threading into a single loop, so the same `Trader`,
+`Strategy` and gateway code runs unchanged:
 
 ```python
-from qate.simulator import ReplayQueue, SimulatorGateway, SyncEventQueue
+from qate.trading.gateways import SimulatorGateway
+from qate.trading.replay import ReplayQueue
 from qate.trading.trader import Trader
 
 # events: an iterable of (EventType, OrderBook | Trade), in timestamp order.
 # Where they come from is not qate's business — see above.
 
-gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
-gateway.set_event_queue(SyncEventQueue(gateway.handlers))   # match orders in place
+gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)  # fills in place
 
 trader = Trader(strategy, ReplayQueue(events))              # market data + own events
 trader.add_gateway(gateway)
@@ -143,7 +142,7 @@ No implementation ships here. K2's `DiscordReporter` is one.
 A local, append-only log of metric records, and nothing else:
 
 ```python
-from qate.trading.metric_log import MetricLog, RotationInterval
+from qate.trading.metrics import MetricLog, RotationInterval
 
 log = MetricLog(RotationInterval.FIVE_MINUTE, 256, "Metrics")
 ```

@@ -21,8 +21,8 @@ supply a fake queue that dispatched synchronously just to defeat the machinery -
 a whole class existing to undo a decision made here.
 
 `qate.trading.gateways.QueuedGateway` is the event-loop implementation, and every
-live venue adapter builds on it. `qate.simulator.SimulatorGateway` implements this
-contract directly and fills in place.
+live venue adapter builds on it. `qate.trading.gateways.SimulatorGateway`
+implements this contract directly and fills in place.
 
 The split also lets a gateway be a *composite*: an adapter that fans open and close
 orders out to two loops of its own is a gateway, and could not say so while the

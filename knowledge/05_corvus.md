@@ -81,7 +81,7 @@ config = Config.from_jsonl("rebalance.jsonl")
 
 There is nothing to backtest. Corvus has no view on price and produces no PnL; a
 replay would only confirm that the simulator fills orders, which
-`qate.simulator`'s own tests already do.
+the gateway's own tests already do.
 
 ## 6 What Corvus Does NOT Do
 

@@ -46,6 +46,7 @@ Two tests hold this, and both are worth understanding before changing them:
 | A production strategy | its own private repo | here |
 | A third worked example | probably nowhere — two is the point | |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
+| Another way of satisfying `ExchangeGateway` | `qate.trading.gateways` | `qate.core` |
 | A way of reading recorded market data | the replayer (Enoshima) | here |
 | A way of storing a run's output | the tool that produces it (Enoshima) | here |
 
@@ -97,7 +98,7 @@ abstract base class cannot give.
   the strategy is ready from the start. A test that counts events must account
   for it.
 - **`qate` has no storage layer.** It writes one thing: the local metric log in
-  `qate.trading.metric_log`. Parquet layouts, database clients and export live with
+  `qate.trading.metrics`. Parquet layouts, database clients and export live with
   whoever produces the results — for a backtest, Enoshima. `qate.store` existed and
   was removed for this reason; two of its three modules had no consumer here at all.
 - **Nothing on a run's hot path may require a database to be reachable.** The log
@@ -109,6 +110,19 @@ abstract base class cannot give.
 - **Every `date=` partition is an Asia/Tokyo day**, 15:00–14:59 UTC, and the
   timestamps inside the files are UTC epochs. `DtRange.days` already produces
   these keys; do not convert.
+- **The simulator is a gateway, not a mode.** `SimulatorGateway` sits in
+  `qate.trading.gateways` beside the three live ones, and that placement is load
+  bearing: `ExchangeGateway` can only stay a plain interface for as long as one
+  implementation of it has no thread and no queue. It had its own top-level package
+  once, which is how the contract came to extend `EventLoop` in the first place —
+  a backtest then had to hand the gateway a fake synchronous queue to get a fill
+  computed inside the strategy's own call.
+- **`ReplayQueue` stays here, and is the point of `qate.core.ev_q`.** Swapping the
+  live `queue.Queue` for `qate.trading.replay.ReplayQueue` is the entire difference
+  between trading and replaying, and it is what makes a backtest expressible with
+  nothing but this package installed. A replayer with a real data layout brings its
+  own — Enoshima's `Channel` reads chunks shared between concurrent runs — so do
+  not move this one out to meet it, and do not grow it towards a layout.
 - **A bar builder is a closer plus a creator.** `qate.trading.chart` composes
   *when a bar ends* with *what the bar is*, which is what makes
   `HeikinAshiRangeBarBuilder` expressible; an inheritance hierarchy could not

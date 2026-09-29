@@ -5,7 +5,7 @@ registers an `ExchangeAdapter` here, and the factory resolves venues through
 this registry rather than importing them.
 
 That is the whole reason the indirection exists. A backtest reaches no venue --
-it replays stored data through `qate.simulator` -- so the published package
+it replays stored data through `SimulatorGateway` -- so the published package
 carries no adapter, and cannot be made to reach a live exchange by
 configuration alone: the code to do it is not installed. Asking for a venue in
 that state raises `UnknownExchange`, which says so.
@@ -34,11 +34,11 @@ reported where it is requested, not guessed at.
 """
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
 from importlib.metadata import entry_points
 from logging import getLogger
-from typing import Callable
 
 from qate.core.api import Api
 from qate.core.conn import PrivateConnection, PublicConnection

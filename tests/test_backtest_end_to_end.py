@@ -20,8 +20,9 @@ from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, Measurement, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
-from qate.simulator import ReplayQueue, SimulatorGateway
 from qate.trading import metrics
+from qate.trading.gateways import SimulatorGateway
+from qate.trading.replay import ReplayQueue
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
 from qate.util.dt_range import DtRange

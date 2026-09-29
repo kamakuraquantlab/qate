@@ -4,8 +4,8 @@ Same five calls the library has always made; they now resolve through
 `registry` instead of importing venue modules directly, so the set of available
 venues is whatever is installed rather than whatever this file enumerates.
 
-Nothing here is on a backtest's path: a replay feeds `qate.simulator.gateway`
-directly, and never asks for a venue.
+Nothing here is on a backtest's path: a replay feeds
+`qate.trading.gateways.simulator` directly, and never asks for a venue.
 """
 
 from qate.core.api import Api
