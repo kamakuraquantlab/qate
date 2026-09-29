@@ -21,7 +21,7 @@ from qate.core.model import ExchangeName, Market, Measurement, OrderBook, OrderL
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
 from qate.simulator import ReplayQueue, SimulatorGateway
-from qate.trading import metric_log
+from qate.trading import metrics
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
 from qate.util.dt_range import DtRange
@@ -73,7 +73,7 @@ class BuyThenSell(Strategy):
 
     def handle_order_book(self, order_book):
         self.books_seen += 1
-        self.add_metric(order_book.market_price(self.ORDER_SIZE).to_metric_object())
+        self.add_metric(order_book.market_price(self.ORDER_SIZE).to_metric())
 
         if self._in_flight or self._next_side is None:
             return
@@ -123,7 +123,7 @@ def run_backtest(tmp_path) -> BuyThenSell:
     trader.add_gateway(gateway)
     trader.register(EventType.MARKET_ORDER_BOOK, gateway.handle_order_book)
 
-    metrics_writer = metric_log.MetricLog(metric_log.RotationInterval.ONE_DAY, 2, "Metrics")
+    metrics_writer = metrics.MetricLog(metrics.RotationInterval.ONE_DAY, 2, "Metrics")
 
     collected: list = []
     trader.add_status_listener(_Collector(collected, metrics_writer))
@@ -156,9 +156,9 @@ def test_backtest_fills_orders_and_writes_a_metric_log(tmp_path, monkeypatch):
     assert buy.exec_size == sell.exec_size == BuyThenSell.ORDER_SIZE
 
     # The log on disk, readable back with no database anywhere in sight.
-    written = list(metric_log.read_metrics_dir(tmp_path, "Metrics"))
+    written = list(metrics.read_metrics_dir(tmp_path, "Metrics"))
     assert len(written) == strategy.books_seen
-    assert {m[0] for m in written} == {Measurement.MARKET_PRICE.value}
+    assert {m.measurement for m in written} == {Measurement.MARKET_PRICE.value}
 
 
 def test_cancelling_an_already_filled_order_is_not_a_fault():
@@ -239,7 +239,7 @@ class _Collector:
             return
         (event_type, event) = data
         if event_type == EventType.METRICS:
-            for metric_object in event:
-                self.metrics_writer.add(metric_log.MetricRecord(metric_object[1], metric_object))
+            for metric in event:
+                self.metrics_writer.add(metric)
         elif event_type == EventType.ORDER_FILLED:
             self.orders.append(event)

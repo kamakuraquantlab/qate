@@ -321,7 +321,7 @@ class Variant(Strategy[Config]):
 
         market_price = order_book.market_price(pair.maker.order_size * 3.0)
         if market_price:
-            self.add_metric(market_price.to_metric_object())
+            self.add_metric(market_price.to_metric())
             if order_book.exchange_name == self.config.maker_exchange:
                 pair.maker.order_book = order_book
                 pair.maker.market_price = market_price

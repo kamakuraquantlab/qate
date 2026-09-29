@@ -7,7 +7,7 @@ from qate.core.gateway import ExchangeGateway
 from qate.core.model import SettleType
 from qate.core.order import OrderResponse
 from qate.core.conn import Connection
-from qate.trading.metric_log import MetricLog, MetricRecord, RotationInterval
+from qate.trading.metrics import MetricLog, RotationInterval
 from qate.trading.chat import Chat
 from qate.trading.pnl_tracker import PnlUpdate
 from qate.trading.strategy import Strategy
@@ -89,18 +89,15 @@ class Bootstrap(EventLoop):
         return self.stats[key]
 
     def handle_order(self, order_response: OrderResponse):
-        metric_object = order_response.to_metric_object()
-        self.metrics_writer.add(MetricRecord(metric_object[1], metric_object))
+        self.metrics_writer.add(order_response.to_metric())
         self._get_stat(order_response.order_request.market.id).add("slippage", order_response.slippage)
 
-    def handle_metrics(self, objects: list):
-        # metric_object is a tuple of (Measuremen ts, timestamp, tags[], fields[])
-        for metric_object in objects:
-            self.metrics_writer.add(MetricRecord(metric_object[1], metric_object))
+    def handle_metrics(self, metrics: list):
+        for metric in metrics:
+            self.metrics_writer.add(metric)
 
     def handle_pnl_update(self, pnl_update: PnlUpdate):
-        metric_object = pnl_update.to_metric_object()
-        self.metrics_writer.add(MetricRecord(metric_object[1], metric_object))
+        self.metrics_writer.add(pnl_update.to_metric())
 
         market_id = pnl_update.market.id
         stat = self._get_stat(market_id)

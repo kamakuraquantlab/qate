@@ -4,6 +4,7 @@
 the tools accept and yields the ISO date partition keys the bronze layer is laid
 out by, so a range maps onto files without anyone converting anything.
 
-`counter` accumulates running statistics, `encoder` is the JSON encoder the env
+`buffer.BufferedWriter` is the batching base every writer in the library uses,
+`counter` accumulates running statistics, and `encoder` is the JSON encoder the env
 files are written with.
 """

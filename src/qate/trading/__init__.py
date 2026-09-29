@@ -12,7 +12,7 @@ a strategy is actually written against.
 | `inventory` | What an account holds, what it may spend, and the drawdown guard |
 | `pnl_tracker` | Turning fills into realized PnL and fees, per position |
 | `gateways/` | The gateway implementations an adapter builds on: blocking, and async |
-| `metric_log` | The local append-only record of what a strategy did |
+| `metrics` | Emitting metrics, and the local append-only log they are recorded in |
 | `param` | `ParamGrid`: the defaults, and the values a sweep walks |
 | `exceptions` | `StopTradingException`, `ApiException` |
 | `chat` | The interface a chat notifier implements. No implementation here |

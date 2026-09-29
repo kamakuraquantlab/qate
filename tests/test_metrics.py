@@ -1,13 +1,17 @@
-"""The metric log: round-trip, rotation, and never destroying a finished file.
+"""Metrics: the record type, the log's rotation, and never destroying a finished file.
 
-The rotation cases are the ones worth holding. A buffer can span any number of
-time keys, and two earlier shapes of `write` mis-filed the events that did.
+The rotation cases are the ones worth holding. A buffer can span any number of time
+keys, and two earlier shapes of `write` mis-filed the events that did.
+
+`Metric` carries its own timestamp, which is why the log takes one directly -- there
+used to be a `MetricRecord` wrapper pairing a ts with a bare list.
 """
 
 import os
 
 from qate.core.model import ExchangeName, Field, Measurement, Side, Tag
-from qate.trading import metric_log as metrics
+from qate.core.model import Metric
+from qate.trading import metrics
 from qate.util.dt_range import DtRange
 
 # 2026-01-15 00:00:00 and 12:00:00 local, and one second into the next day.
@@ -15,13 +19,13 @@ DAY_ONE = DtRange.from_strings("20260115", "20260115").start_ts
 DAY_TWO = DtRange.from_strings("20260116", "20260116").start_ts
 
 
-def metric(ts: float, price: float) -> list:
-    return [
+def metric(ts: float, price: float) -> Metric:
+    return Metric(
         Measurement.TRADE.value,
         ts,
         [Tag.EXCHANGE_NAME.value, ExchangeName.COINCHECK.value, Tag.SIDE.value, Side.BUY.value],
         [Field.PRICE.value, price, Field.SIZE.value, 0.01],
-    ]
+    )
 
 
 def test_metrics_round_trip_through_msgpack(tmp_path, monkeypatch):
@@ -29,7 +33,7 @@ def test_metrics_round_trip_through_msgpack(tmp_path, monkeypatch):
     writer = metrics.MetricLog(metrics.RotationInterval.ONE_DAY, 2, "Metrics")
     written = [metric(DAY_ONE + i, 100.0 + i) for i in range(5)]
     for obj in written:
-        writer.add(metrics.MetricRecord(obj[1], obj))
+        writer.add(obj)
     writer.close()
 
     read_back = list(metrics.read_metrics_dir(tmp_path, "Metrics"))
@@ -40,7 +44,7 @@ def test_close_leaves_no_writing_file(tmp_path, monkeypatch):
     """A finished run must not leave a file a reader has to decide about."""
     monkeypatch.chdir(tmp_path)
     writer = metrics.MetricLog(metrics.RotationInterval.ONE_DAY, 100, "Metrics")
-    writer.add(metrics.MetricRecord(DAY_ONE, metric(DAY_ONE, 1.0)))
+    writer.add(metric(DAY_ONE, 1.0))
     writer.close()
 
     names = sorted(os.listdir(tmp_path))
@@ -56,7 +60,7 @@ def test_rotation_splits_on_the_day(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     writer = metrics.MetricLog(metrics.RotationInterval.ONE_DAY, 4, "Metrics")
     for ts in (DAY_ONE, DAY_ONE + 1, DAY_TWO, DAY_TWO + 1):
-        writer.add(metrics.MetricRecord(ts, metric(ts, 1.0)))
+        writer.add(metric(ts, 1.0))
     writer.close()
 
     assert sorted(os.listdir(tmp_path)) == ["Metrics_20260115.msgpack", "Metrics_20260116.msgpack"]
@@ -71,7 +75,7 @@ def test_one_buffer_spanning_three_days_reaches_three_files(tmp_path, monkeypatc
 
     writer = metrics.MetricLog(metrics.RotationInterval.ONE_DAY, len(stamps), "Metrics")
     for ts in stamps:
-        writer.add(metrics.MetricRecord(ts, metric(ts, 1.0)))
+        writer.add(metric(ts, 1.0))
     writer.close()
 
     assert sorted(os.listdir(tmp_path)) == [
@@ -99,7 +103,7 @@ def test_a_finished_file_is_never_overwritten(tmp_path, monkeypatch):
     existing.write_bytes(b"first run")
 
     writer = metrics.MetricLog(metrics.RotationInterval.ONE_DAY, 100, "Metrics")
-    writer.add(metrics.MetricRecord(DAY_ONE, metric(DAY_ONE, 1.0)))
+    writer.add(metric(DAY_ONE, 1.0))
     writer.close()
 
     # Both survive: the finished file untouched, the new one still marked .writing.

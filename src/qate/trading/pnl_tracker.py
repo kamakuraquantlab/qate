@@ -7,6 +7,7 @@ from qate.core.model import (
     Field,
     Market,
     Measurement,
+    Metric,
     SettleType,
     Side,
     Tag,
@@ -44,7 +45,7 @@ class PnlUpdate(TimeSeriesData):
             return 0.0
         return self.pnl / self.open_cost
 
-    def to_metric_object(self) -> list:
+    def to_metric(self) -> Metric:
         if self.settle_type == SettleType.CLOSE:
             fields = [
                 Field.FEE.value,
@@ -60,7 +61,7 @@ class PnlUpdate(TimeSeriesData):
                 self.fee,
             ]
 
-        return [
+        return Metric(
             Measurement.PNL.value,
             self.get_ts(),
             [
@@ -74,7 +75,7 @@ class PnlUpdate(TimeSeriesData):
                 self.side.value,
             ],
             fields,
-        ]
+        )
 
 
 # Fee configuration: (exchange, symbol, maker_fee, taker_fee)

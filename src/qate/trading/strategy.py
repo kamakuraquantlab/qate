@@ -4,9 +4,10 @@ from typing import Generic, TypeVar
 from qate.core.ev_type import EventType
 from qate.core.feed import StatusFeed
 from qate.core.gateway import ExchangeGateway
-from qate.core.metric import FeedWriter
+from qate.trading.metrics import FeedWriter
 from qate.core.model import (
     EventLoopExit,
+    Metric,
     OrderBook,
     SettleType,
     Trade,
@@ -99,9 +100,9 @@ class Strategy(StatusFeed, Generic[C]):
     def is_ready(self) -> bool:
         return self._is_ready
 
-    def add_metric(self, metric_object, flush_now: bool = False):
-        # metric_object is a tuple of (Measurement, timestamp, tags[], fields[])
-        self.feed_writer.add(metric_object)
+    def add_metric(self, metric: Metric, flush_now: bool = False):
+        """Emit one metric. Where it ends up is the runner's decision, not yours."""
+        self.feed_writer.add(metric)
         if flush_now:
             self.feed_writer.flush()
 
