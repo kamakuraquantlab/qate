@@ -101,7 +101,7 @@ class EventLoop(StatusFeed, threading.Thread):
             self.publish_status(EventType.EXCEPTION, e)
             return False
         except BaseException as e:
-            LOG.exception()
+            LOG.exception(f"{self.__class__.__name__} unhandled exception in event loop")
             self.publish_status(EventType.EXCEPTION, e)
         return True
 
