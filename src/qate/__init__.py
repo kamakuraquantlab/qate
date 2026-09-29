@@ -6,7 +6,6 @@
 | `trading` | Strategy base class, charts, indicators, inventory, PnL, risk |
 | `simulator` | The gateway a backtest fills orders against |
 | `exchange` | The adapter contract and registry. No venue lives here |
-| `data` | Reading recorded market data from the bronze layer |
 | `store` | A run's own output: local metrics, parquet results, InfluxDB export |
 | `env` | Named run directories, and machine-level settings |
 | `boot` | Wiring a strategy, its gateways and its feeds together |

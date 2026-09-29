@@ -5,7 +5,7 @@ that no other module carries a path. There are no hardcoded locations here: each
 answer comes from a config file, an environment variable, or a documented
 default under the user's home directory.
 
-## The two roots
+## The one root
 
 `get_env_root_dir()` is where trading environments live -- one directory per
 `EnvName`, holding its config, parameter grid, logs and results. It defaults to
@@ -13,8 +13,8 @@ default under the user's home directory.
 `.qate.json` sitting next to the running script, which is how a checkout keeps
 its own environments beside itself instead of in `$HOME`.
 
-`get_data_root()` is where market data lives, and the answer belongs to
-`komachi`: see `qate.data.bronze.data_root`.
+There is deliberately no market-data root here. `qate` does not read market data
+and does not know where it lives; the tool that downloaded it does.
 
 ## Credentials
 
@@ -90,13 +90,6 @@ def get_secret_dir() -> Path:
     if from_env:
         return Path(from_env).expanduser()
     return DEFAULT_SECRET_DIR
-
-
-def get_data_root() -> Path:
-    """Where market data lives. `komachi`'s answer, or the script config."""
-    from qate.data.bronze import data_root
-
-    return data_root(_script_config().get("data_root"))
 
 
 def _read_keys(service_name: str, section: str, *fields: str) -> tuple[str, ...]:

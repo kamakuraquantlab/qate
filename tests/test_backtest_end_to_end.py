@@ -1,22 +1,22 @@
 """A whole backtest, through the public package only.
 
-Bronze parquet on disk, replayed through the simulator, into local results. This
-is the path the library exists to support, and it is worth one test that walks
-all of it rather than several that each mock the next piece.
+Order books in, replayed through the simulator, results on disk. This is the path
+the library exists to support, and it is worth one test that walks all of it
+rather than several that each mock the next piece.
 
-Nothing here installs an exchange adapter, so the test also demonstrates the
-claim: a backtest runs to completion with no venue available.
+The books are built in memory rather than read from a file. `qate` does not know
+any storage layout -- reading recorded data belongs to whoever owns it -- so a
+test that needed parquet would be testing a dependency this package does not
+have. Events in, events out.
+
+Nothing here installs an exchange adapter, and the second test proves the backtest
+path never even asks for one.
 """
 
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-
 from qate.core.ev_type import EventType
-from qate.core.model import ExchangeName, Market, Measurement, SettleType, Side
+from qate.core.model import ExchangeName, Market, Measurement, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
-from qate.data import bronze
 from qate.simulator import ReplayQueue, SimulatorGateway, SyncEventQueue
 from qate.store import metrics, timeseries
 from qate.trading.strategy import Strategy
@@ -29,26 +29,19 @@ DEPTH = 5
 START_TS = DtRange.from_strings("20260115", "20260115").start_ts
 
 
-def write_books(root, prices: list[float]) -> None:
+def make_books(prices: list[float]) -> list[tuple[str, OrderBook]]:
     """One book per price, a fixed 1000-wide spread, 1.0 resting at each level."""
-    columns = ["ts"]
-    for side in ("bid", "ask"):
-        for i in range(DEPTH):
-            columns += [f"{side}{i}_price", f"{side}{i}_qty"]
-
-    rows = []
+    events = []
     for n, mid in enumerate(prices):
-        row = {"ts": START_TS + n}
-        for i in range(DEPTH):
-            row[f"bid{i}_price"] = mid - 500 - i * 100
-            row[f"bid{i}_qty"] = 1.0
-            row[f"ask{i}_price"] = mid + 500 + i * 100
-            row[f"ask{i}_qty"] = 1.0
-        rows.append(row)
-
-    path = bronze.data_path(root, bronze.ORDER_BOOK, MARKET, DATE)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pandas(pd.DataFrame(rows, columns=columns), preserve_index=False), path)
+        bids = [OrderLevel(mid - 500 - i * 100, 1.0) for i in range(DEPTH)]
+        asks = [OrderLevel(mid + 500 + i * 100, 1.0) for i in range(DEPTH)]
+        events.append(
+            (
+                EventType.MARKET_ORDER_BOOK,
+                OrderBook(bids, asks, MARKET.symbol, MARKET.exchange_name, START_TS + n),
+            )
+        )
+    return events
 
 
 class BuyThenSell(Strategy):
@@ -112,16 +105,11 @@ MIDS = [15_000_000.0 + n * 10_000 for n in range(6)]
 
 
 def run_backtest(tmp_path) -> tuple[BuyThenSell, timeseries.StrategyStore]:
-    """The whole path: bronze on disk, through the simulator, into local results.
+    """The whole path: recorded books, through the simulator, into local results.
 
     Returns the finished strategy and the PnL store, for the caller to assert on.
     """
-    data_root = tmp_path / "data"
-    write_books(data_root, MIDS)
-
-    # Market data: bronze on disk, read through the public reader.
-    store = bronze.BronzeStore(data_root)
-    events = store.create_order_book(MARKET).load(DATE)
+    events = make_books(MIDS)
     assert len(events) == len(MIDS)
     assert events[0][0] == EventType.MARKET_ORDER_BOOK
 

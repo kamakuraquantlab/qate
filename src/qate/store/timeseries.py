@@ -7,8 +7,8 @@ One dataset, one partition path, one file per day:
 That is the layout PyArrow, DuckDB, Spark and Athena all recover partition keys
 from, so a whole run is one `read_parquet` with a glob and there is no index to
 keep in step. It is also the layout the Kamakura Quant Lab bronze data arrives
-in, which is why `qate.data.bronze` reads with the same conventions this writes
-with.
+in, so a run's own output sits beside the data it was computed from and reads
+with the same tools.
 
 The class is the generic half. What a backtest actually writes -- per-trade PnL
 and strategy bars -- is `ResultStore` at the bottom of this module.

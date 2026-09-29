@@ -5,23 +5,23 @@ loop, order lifecycle, strategy base class, charts and indicators, inventory and
 PnL tracking, and a simulator that fills orders against recorded order books.
 
 It reaches no exchange. That is a property of the install, not a promise in a
-README: there is no WebSocket client anywhere in its dependency tree, no venue
-endpoint in its source, and no request-signing or account code. A venue arrives
-only as a separate package that registers an adapter, and without one there is no
-code here that could connect anywhere.
+README: there is no HTTP client and no WebSocket client anywhere in its dependency
+tree, no venue endpoint in its source, and no request-signing or account code. A
+venue arrives only as a separate package that registers an adapter, and without
+one there is no code here that could connect anywhere.
 
-The one HTTP client in the tree arrives with `komachi`, and `komachi` talks to
-exactly one host — the Kamakura Quant Lab download API — to fetch data you have
-bought.
+It also does not know where market data lives, or what format it is in. That
+belongs to whoever owns the data. `qate` defines what an order book and a trade
+*are*; something else reads them and hands them over.
 
 ```bash
 pip install kamakuraquantlab-qate
 ```
 
-Market data comes from [Komachi](https://github.com/kamakuraquantlab/Komachi),
-which downloads it; deriving features from it is
-[Hase](https://github.com/kamakuraquantlab/Hase); running a backtest over it is
-Enoshima. This is the library all three of those sit on.
+For Kamakura Quant Lab data: [Komachi](https://github.com/kamakuraquantlab/Komachi)
+downloads it, [Hase](https://github.com/kamakuraquantlab/Hase) derives features
+from it, and [Enoshima](https://github.com/kamakuraquantlab/Enoshima) backtests
+over it. This is the library Enoshima sits on.
 
 ## Layout
 
@@ -31,37 +31,27 @@ Enoshima. This is the library all three of those sit on.
 | `qate.trading` | Strategy base class, chart and bars, indicators, inventory, PnL, risk |
 | `qate.simulator` | The gateway a backtest fills orders against, and the queues that drive it |
 | `qate.exchange` | The adapter contract and registry. No venue lives here |
-| `qate.data` | Reading recorded trades and order books from the bronze layer |
 | `qate.store` | A run's own output: local metrics, parquet results, InfluxDB export |
 | `qate.env` | Named run directories, and machine-level settings |
 | `qate.boot` | Wiring a strategy, its gateways and its feeds together |
 | `qate.util` | Date ranges, counters, encoding, replay-aware logging |
 
-## Reading market data
+## Market data comes from outside
 
-`komachi` puts data in a Hive-partitioned tree, and `qate.data.bronze` reads it
-where it lands, so nothing needs to name a path:
+There is no reader here, deliberately. Reading recorded data means knowing a
+storage layout, and a layout has an owner — for Kamakura Quant Lab data that is
+`komachi`, which writes it. A trading library that also knew the layout would be a
+second implementation of one question, and the day the two disagree is the day a
+backtest silently skips a date the downloader thinks it has.
 
-```python
-from qate.core.model import ExchangeName, Market
-from qate.core.symbol import Symbol
-from qate.data import bronze
+So a replayer hands `qate` events. `Enoshima` is the one that joins the two: it
+asks `komachi` where the files are, reads them, and produces
+`qate.core.model.OrderBook` and `Trade`. Anything that can produce those objects
+works the same way.
 
-store = bronze.BronzeStore()              # komachi's data root
-market = Market(ExchangeName.COINCHECK, Symbol.BTC_SPOT)
-
-print(store.markets())                    # what is on disk
-print(store.available_dates(market, bronze.ORDER_BOOK))
-
-for event_type, book in store.create_order_book(market).load("2026-01-15"):
-    print(book.get_ts(), book.best_bid, book.best_ask, book.spread_bps)
-```
-
-`BronzeStore("/some/path")` reads any tree in the same layout.
-
-Dates are Asia/Tokyo days spanning 15:00–14:59 UTC, and the timestamps inside
-the files are UTC epochs. `qate.util.dt_range.DtRange` produces exactly the
-partition keys these paths use, so a range maps onto files with no conversion.
+`qate.util.dt_range.DtRange` is the shared vocabulary for *when*: it yields ISO
+date partition keys, which is what both the bronze layer and
+`qate.store.timeseries` are laid out by.
 
 ## Running a backtest
 
@@ -74,7 +64,8 @@ unchanged:
 from qate.simulator import ReplayQueue, SimulatorGateway, SyncEventQueue
 from qate.trading.trader import Trader
 
-events = store.create_order_book(market).load("2026-01-15")
+# events: an iterable of (EventType, OrderBook | Trade), in timestamp order.
+# Where they come from is not qate's business — see above.
 
 gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
 gateway.set_event_queue(SyncEventQueue(gateway.handlers))   # match orders in place
@@ -158,8 +149,10 @@ load an adapter from a checkout that is not installed.
 | What | Where |
 |---|---|
 | Run directories | `~/env`, or `QATE_ENV_ROOT`, or `env_root_dir` in a `.qate.json` beside the script |
-| Market data | Whatever `komachi` was set to; `data_root` in `.qate.json` overrides |
 | Credentials | `~/.qate/<service>.keys`, INI, one section per key set |
+
+There is no market-data setting. `qate` does not read market data, so it has no
+opinion about where it is.
 
 A backtest asks for no credential. `qate.env.sys_env` raises
 `CredentialsNotFound` naming the file it looked for rather than falling back to

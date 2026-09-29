@@ -11,16 +11,12 @@ change is measured against that.
 
 Concretely, and in order of how easy each is to break by accident:
 
-1. **No WebSocket client may enter the dependency tree, and no HTTP client of
-   qate's own may enter `dependencies`.** Both live in `qate-exchanges`. Their
-   absence is what makes the claim checkable with `pip list` rather than by
-   review. An "optional" extra that pulls one in is the same mistake wearing a
-   hat.
-
-   The exception, and the only one: `komachi` brings `httpx`, because downloading
-   purchased data is an HTTP call. It reaches one host. If you find yourself
-   wanting `httpx` for anything else, what you are writing belongs in
-   `qate-exchanges`.
+1. **No HTTP client and no WebSocket client may enter the dependency tree, at any
+   depth.** Both live in `qate-exchanges`. Their absence is what makes the claim
+   checkable with `pip list` rather than by review. An "optional" extra that pulls
+   one in is the same mistake wearing a hat, and so is a data dependency that
+   brings one transitively — which is how `httpx` got in here once, through
+   `komachi`.
 2. **No venue endpoint, symbol mapping, or request signing belongs here.**
    `qate.core.conn` declares what a connection *is*; the implementation is an
    adapter's.
@@ -49,10 +45,15 @@ Two tests hold this, and both are worth understanding before changing them:
 | A live-trading dev program | `qate-exchanges/tools/` | `tests/` |
 | A production strategy | its own private repo | here |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
-| A way of reading recorded data | `qate.data` | `qate.store` |
-| A way of writing a run's own output | `qate.store` | `qate.data` |
+| A way of reading recorded market data | the replayer (Enoshima) | here |
+| A way of writing a run's own output | `qate.store` | |
 
-`qate.data` reads, `qate.store` writes. Market data is only ever read.
+**`qate` does not read market data and does not know where it lives.** A replayer
+hands it events. This was not the original shape: there was a `qate.data.bronze`
+that globbed the tree and duplicated `komachi.bronze`'s answers about which days
+are complete, with a docstring promising by hand that the two agreed. Reading
+recorded data means knowing a layout, a layout has an owner, and two
+implementations of one question drift.
 
 ## Facts worth knowing before editing
 
@@ -76,9 +77,6 @@ Two tests hold this, and both are worth understanding before changing them:
 - **Every `date=` partition is an Asia/Tokyo day**, 15:00–14:59 UTC, and the
   timestamps inside the files are UTC epochs. `DtRange.days` already produces
   these keys; do not convert.
-- **Order-book depth is read from the file's columns**, never assumed. It differs
-  by venue and has changed across the archive. Absent levels arrive as `None` or
-  `NaN` depending on how parquet typed the column — both have to be handled.
 - **`numba` is optional, and `qate.trading.aggression` must keep working
   without it.** It pins hard against numpy's ABI and lags each new numpy release,
   so requiring it would make the package uninstallable on a current numpy for a

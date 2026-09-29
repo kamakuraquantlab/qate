@@ -12,6 +12,9 @@ Everything is written locally first. A database is somewhere to copy results to
 afterwards, never a dependency of producing them, so a run finishes whether or
 not one is reachable.
 
-Market data is not here. It is read, not written, and it comes from
-`qate.data.bronze`.
+Market data is not here, and not anywhere in `qate`. It is read rather than
+written, and locating and reading it belongs to whoever owns it -- for Kamakura
+Quant Lab data that is `komachi`, and the replayer that joins the two is
+Enoshima. A trading library that also knew the storage layout would be a second
+implementation of a question that already has an owner.
 """
