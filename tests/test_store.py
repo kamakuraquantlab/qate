@@ -92,6 +92,26 @@ def test_one_buffer_spanning_three_days_reaches_three_files(tmp_path, monkeypatc
     }
 
 
+def test_a_finished_file_is_never_overwritten(tmp_path, monkeypatch):
+    """Recorded data cannot be recorded again, so a rename must refuse rather than clobber.
+
+    Reachable by restart: a process writes `<key>.writing`, is restarted inside the
+    same time key, appends to a fresh `<key>.writing`, and the rename that finishes
+    it would land on the first run's output.
+    """
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "Metrics_20260115.msgpack"
+    existing.write_bytes(b"first run")
+
+    writer = metrics.MsgpackWriter(metrics.RotationInterval.ONE_DAY, 100, "Metrics")
+    writer.add(metrics.WriterObject(DAY_ONE, metric(DAY_ONE, 1.0)))
+    writer.close()
+
+    # Both survive: the finished file untouched, the new one still marked .writing.
+    assert existing.read_bytes() == b"first run"
+    assert (tmp_path / "Metrics_20260115.msgpack.writing").exists()
+
+
 def test_timeseries_writes_one_file_per_day(tmp_path):
     store = timeseries.StrategyStore(tmp_path, "Pnl", MARKET, "example.v1", "abc123")
     store.add(DAY_ONE, {"pnl_inc": 1.5})

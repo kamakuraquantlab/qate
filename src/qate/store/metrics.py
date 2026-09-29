@@ -15,7 +15,6 @@ until the rotation closes them, so a reader can tell a finished file from the
 one still being appended to.
 """
 
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
@@ -81,12 +80,31 @@ class MsgpackWriter(BufferedWriter):
         packed_data = b"".join(msgpack.packb(item.data, use_bin_type=True) for item in objects)
         self.current_file.write(packed_data)
 
+    def _finish_file(self, time_key: str) -> None:
+        """Give a finished file its final name, without ever overwriting one.
+
+        A plain rename would silently destroy an existing finished file, and that is
+        reachable: a process appends to `<key>.writing`, is restarted inside the
+        same time key, appends to a fresh `<key>.writing`, and the next rotation
+        renames it over the first run's output. Recorded data cannot be recorded
+        again, so refusing and keeping both is the only acceptable answer.
+        """
+        writing = Path(f"{self.prefix}_{time_key}{WRITING_SUFFIX}")
+        final = Path(f"{self.prefix}_{time_key}{SUFFIX}")
+        if not writing.exists():
+            return
+        if final.exists():
+            LOG.error(
+                f"Not renaming {writing} over the existing {final}: that would destroy it. "
+                f"Both files are on disk; merge them by hand."
+            )
+            return
+        writing.rename(final)
+
     def _rotate_file(self, time_key: str):
         self._close_file()
         if self.current_time_key:
-            msgpack_file_path = f"{self.prefix}_{self.current_time_key}{SUFFIX}"
-            writing_file_path = f"{self.prefix}_{self.current_time_key}{WRITING_SUFFIX}"
-            os.rename(writing_file_path, msgpack_file_path)
+            self._finish_file(self.current_time_key)
 
         self.current_time_key = time_key
         file_path = f"{self.prefix}_{time_key}{WRITING_SUFFIX}"
@@ -128,12 +146,10 @@ class MsgpackWriter(BufferedWriter):
     def close(self):
         super().close()
         self._close_file()
-        # Give the last file its final name too, so a reader does not have to
-        # decide whether a `.writing` file belongs to a live process.
+        # Name the last file too, so a reader does not have to decide whether a
+        # `.writing` file belongs to a process that is still running.
         if self.current_time_key:
-            writing = Path(f"{self.prefix}_{self.current_time_key}{WRITING_SUFFIX}")
-            if writing.exists():
-                writing.rename(f"{self.prefix}_{self.current_time_key}{SUFFIX}")
+            self._finish_file(self.current_time_key)
 
 
 def read_metrics_file(path: str | Path) -> Iterator[list]:
