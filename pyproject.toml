@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kamakuraquantlab-qate"
+version = "0.1.0"
+description = "Quantitative trading library for backtesting against recorded market data"
+readme = "README.md"
+requires-python = ">=3.11"
+
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Kamakura Quant Lab", email = "support@kamakuraquantlab.jp"}]
+keywords = ["backtesting", "quantitative-finance", "market-data", "order-book", "trading"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+# No HTTP client and no WebSocket client. Both left with the exchange adapters,
+# and their absence is what makes "this package cannot reach an exchange" a fact
+# about the install rather than a claim in a README.
+dependencies = [
+    "dacite>=1.9",
+    "msgpack>=1.1",
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=15.0",
+    "kamakuraquantlab-komachi>=0.7",
+]
+
+[project.optional-dependencies]
+# Exporting metrics to InfluxDB is the optional second step described in
+# qate.store; a run writes its results locally either way.
+influx = [
+    "influxdb-client>=1.49",
+]
+# numba JITs the trade-aggression hot loops. Optional because numba pins hard
+# against numpy's ABI and lags each new numpy release; qate.trading.aggression
+# falls back to the same code unjitted.
+fast = [
+    "numba>=0.60",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.1",
+    "influxdb-client>=1.49",
+]
+
+[project.urls]
+Homepage = "https://kamakuraquantlab.jp"
+Source = "https://github.com/kamakuraquantlab/qate"
+"The data" = "https://kamakuraquantlab.jp/data/"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["qate*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

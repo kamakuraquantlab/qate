@@ -1,0 +1,222 @@
+"""A whole backtest, through the public package only.
+
+Bronze parquet on disk, replayed through the simulator, into local results. This
+is the path the library exists to support, and it is worth one test that walks
+all of it rather than several that each mock the next piece.
+
+Nothing here installs an exchange adapter, so the test also demonstrates the
+claim: a backtest runs to completion with no venue available.
+"""
+
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from qate.core.ev_type import EventType
+from qate.core.model import ExchangeName, Market, Measurement, SettleType, Side
+from qate.core.order import OrderRequest, OrderType
+from qate.core.symbol import Symbol
+from qate.data import bronze
+from qate.simulator import ReplayQueue, SimulatorGateway, SyncEventQueue
+from qate.store import metrics, timeseries
+from qate.trading.strategy import Strategy
+from qate.trading.trader import Trader
+from qate.util.dt_range import DtRange
+
+MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
+DATE = "2026-01-15"
+DEPTH = 5
+START_TS = DtRange.from_strings("20260115", "20260115").start_ts
+
+
+def write_books(root, prices: list[float]) -> None:
+    """One book per price, a fixed 1000-wide spread, 1.0 resting at each level."""
+    columns = ["ts"]
+    for side in ("bid", "ask"):
+        for i in range(DEPTH):
+            columns += [f"{side}{i}_price", f"{side}{i}_qty"]
+
+    rows = []
+    for n, mid in enumerate(prices):
+        row = {"ts": START_TS + n}
+        for i in range(DEPTH):
+            row[f"bid{i}_price"] = mid - 500 - i * 100
+            row[f"bid{i}_qty"] = 1.0
+            row[f"ask{i}_price"] = mid + 500 + i * 100
+            row[f"ask{i}_qty"] = 1.0
+        rows.append(row)
+
+    path = bronze.data_path(root, bronze.ORDER_BOOK, MARKET, DATE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pandas(pd.DataFrame(rows, columns=columns), preserve_index=False), path)
+
+
+class BuyThenSell(Strategy):
+    """Buys on the first book it handles, sells once that buy has filled.
+
+    Deliberately minimal: what is being tested is that the wiring carries an
+    order from a strategy to a fill and back, not a trading idea.
+    """
+
+    ORDER_SIZE = 0.01
+
+    def __init__(self):
+        super().__init__(params={"size": self.ORDER_SIZE})
+        self._is_ready = True
+        self.gateway = None
+        self.warmup_books = 0
+        self.books_seen = 0
+        self.fills: list = []
+        self._next_side = Side.BUY
+        self._in_flight = False
+
+    def add_gateway(self, gateway):
+        self.gateway = gateway
+
+    def warmup_order_book(self, order_book):
+        self.warmup_books += 1
+
+    def handle_order_book(self, order_book):
+        self.books_seen += 1
+        self.add_metric(order_book.market_price(self.ORDER_SIZE).to_metric_object())
+
+        if self._in_flight or self._next_side is None:
+            return
+
+        self._in_flight = True
+        # OrderType.DEFAULT is the taker path in the simulator: it crosses the
+        # spread at the touch rather than resting.
+        self.gateway.create(
+            OrderRequest(
+                ts=order_book.get_ts(),
+                market=MARKET,
+                side=self._next_side,
+                price=order_book.mid,
+                size=self.ORDER_SIZE,
+                settle_type=SettleType.OPEN if self._next_side == Side.BUY else SettleType.CLOSE,
+                order_type=OrderType.DEFAULT,
+            )
+        )
+
+    def handle_order_filled(self, order_response):
+        super().handle_order_filled(order_response)
+        self.fills.append(order_response)
+        self._in_flight = False
+        self._next_side = Side.SELL if self._next_side == Side.BUY else None
+
+
+# Six books, the mid rising by 10,000 each. Six because an order created on one
+# book fills on the next, so a buy and a sell need four, plus the one Warmup
+# consumes and one after the last fill.
+MIDS = [15_000_000.0 + n * 10_000 for n in range(6)]
+
+
+def run_backtest(tmp_path) -> tuple[BuyThenSell, timeseries.StrategyStore]:
+    """The whole path: bronze on disk, through the simulator, into local results.
+
+    Returns the finished strategy and the PnL store, for the caller to assert on.
+    """
+    data_root = tmp_path / "data"
+    write_books(data_root, MIDS)
+
+    # Market data: bronze on disk, read through the public reader.
+    store = bronze.BronzeStore(data_root)
+    events = store.create_order_book(MARKET).load(DATE)
+    assert len(events) == len(MIDS)
+    assert events[0][0] == EventType.MARKET_ORDER_BOOK
+
+    # A strategy, a simulator standing in for GMO, and one thread.
+    strategy = BuyThenSell()
+    gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
+    gateway.set_event_queue(SyncEventQueue(gateway.handlers))
+
+    trader = Trader(strategy, ReplayQueue(events))
+    trader.add_gateway(gateway)
+    trader.register(EventType.MARKET_ORDER_BOOK, gateway.handle_order_book)
+
+    metrics_writer = metrics.MsgpackWriter(metrics.RotationInterval.ONE_DAY, 2, "Metrics")
+    results = timeseries.ResultStore(tmp_path / "results", "example.v1", strategy.get_param_set_id())
+    pnl_store = results.create_pnl(MARKET)
+
+    collected: list = []
+    trader.add_status_listener(_Collector(collected, metrics_writer))
+
+    trader.run()
+
+    metrics_writer.close()
+    return strategy, pnl_store
+
+
+def test_backtest_reads_bronze_fills_orders_and_writes_results(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    strategy, pnl_store = run_backtest(tmp_path)
+
+    # Every book was accounted for, and the replay ended when the data did with
+    # no sentinel appended. Trader.before_loop runs a Warmup that drains the
+    # queue until the strategy declares itself ready, which costs one event even
+    # for a strategy that is ready from the start.
+    assert strategy.warmup_books == 1
+    assert strategy.books_seen == len(MIDS) - 1
+
+    # A buy and a sell, each filled at the touch of the book *after* the one it
+    # was created on. That one-book delay is the simulator's latency model: an
+    # order is matched by the next snapshot, never by the one the strategy was
+    # looking at when it decided.
+    assert [f.order_request.side for f in strategy.fills] == [Side.BUY, Side.SELL]
+    buy, sell = strategy.fills
+    assert buy.exec_price == MIDS[2] + 500  # third book's best ask
+    assert sell.exec_price == MIDS[4] - 500  # fifth book's best bid
+    assert buy.exec_size == sell.exec_size == BuyThenSell.ORDER_SIZE
+
+    # Results on disk: metrics as msgpack, PnL as parquet.
+    for fill in strategy.fills:
+        pnl_store.add(fill.get_ts(), {"exec_price": fill.exec_price, "side": fill.order_request.side.value})
+    pnl_store.close()
+
+    written = list(metrics.read_metrics_dir(tmp_path, "Metrics"))
+    assert len(written) == strategy.books_seen
+    assert {m[0] for m in written} == {Measurement.MARKET_PRICE.value}
+
+    df = pnl_store.read([DATE])
+    assert list(df["exec_price"]) == [buy.exec_price, sell.exec_price]
+
+
+def test_a_backtest_never_asks_for_an_exchange(tmp_path, monkeypatch):
+    """The publication guarantee, asserted where it matters.
+
+    Not "no adapter is installed" -- that depends on the machine, and on a
+    developer's machine an adapter usually is. What must hold everywhere is that
+    the backtest path never reaches the registry at all, so installing an adapter
+    cannot change what a replay does. A tripwire in place of every registry entry
+    point proves it: the run completes without tripping one.
+    """
+    from qate.exchange import registry
+
+    def tripwire(*args, **kwargs):
+        raise AssertionError("a backtest asked the exchange registry for a venue")
+
+    monkeypatch.setattr(registry, "get", tripwire)
+    monkeypatch.setattr(registry, "discover", tripwire)
+    monkeypatch.setattr(registry, "registered", tripwire)
+    monkeypatch.chdir(tmp_path)
+
+    strategy, _ = run_backtest(tmp_path)
+    assert len(strategy.fills) == 2
+
+
+class _Collector:
+    """Stands in for a result queue: metrics to the local writer, orders kept."""
+
+    def __init__(self, orders: list, metrics_writer):
+        self.orders = orders
+        self.metrics_writer = metrics_writer
+
+    def put(self, data):
+        if data is None:
+            return
+        (event_type, event) = data
+        if event_type == EventType.METRICS:
+            for metric_object in event:
+                self.metrics_writer.add(metrics.WriterObject(metric_object[1], metric_object))
+        elif event_type == EventType.ORDER_FILLED:
+            self.orders.append(event)
