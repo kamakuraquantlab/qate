@@ -15,6 +15,8 @@ from qate.util.encoder import Encoder
 
 from .env_name import EnvName
 
+LOG = getLogger(__name__)
+
 ENUM_TYPE_HOOKS = {
     ExchangeName: lambda x: ExchangeName[x],
     Symbol: lambda x: Symbol[x],
@@ -231,14 +233,37 @@ echo "Warning: Process may still be running"
         self.lock_fd = lock_fd
 
     def unlock(self):
-        if hasattr(self, "lock_fd") and self.lock_fd:
-            # Release the lock
+        """Release the lock and remove the lock file.
+
+        Every caller runs this from a `finally`, usually while shutting down after
+        something else went wrong. So a failure here must not raise: it would
+        replace the exception that caused the shutdown with a complaint about a lock
+        file, and the interesting error would be lost.
+
+        These are dynamic conditions rather than logic bugs -- the file already
+        gone, the descriptor already closed -- which is the case
+        `knowledge/01_philosophy.md` §1.2 says to handle. Handled, and logged; not
+        swallowed silently.
+        """
+        if not getattr(self, "lock_fd", None):
+            return
+
+        try:
             fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
             self.lock_fd.close()
+        except OSError as e:
+            LOG.warning(f"Could not release the lock on {self.work_dir}: {e}")
+        finally:
+            self.lock_fd = None
 
-            lock_file = os.path.join(self.work_dir, LOCK_FILE)
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
+        try:
+            # Removed without checking first: between a check and a remove the file
+            # can go, and FileNotFoundError is the answer either way.
+            os.remove(os.path.join(self.work_dir, LOCK_FILE))
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            LOG.warning(f"Could not remove the lock file in {self.work_dir}: {e}")
 
     def add_enum_to_hooks(self, enum):
         self.hooks[enum] = lambda x: enum[x]

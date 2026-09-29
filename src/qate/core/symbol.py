@@ -100,7 +100,7 @@ _SYMBOL_DEF = {
 }
 
 
-def get_symbol_def(symbol: Union[Symbol, str]) -> SymbolDef:
+def get_symbol_def(symbol: Symbol | str) -> SymbolDef:
     if isinstance(symbol, str):
         symbol = Symbol[symbol]
     return _SYMBOL_DEF[symbol]
