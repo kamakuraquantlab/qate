@@ -44,6 +44,7 @@ Two tests hold this, and both are worth understanding before changing them:
 | A venue, or anything venue-specific | `qate-exchanges` | here |
 | A live-trading dev program | `qate-exchanges/tools/` | `tests/` |
 | A production strategy | its own private repo | here |
+| A third worked example | probably nowhere — two is the point | |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
 | A way of reading recorded market data | the replayer (Enoshima) | here |
 | A way of writing a run's own output | `qate.store` | |
@@ -54,6 +55,26 @@ that globbed the tree and duplicated `komachi.bronze`'s answers about which days
 are complete, with a docstring promising by hand that the two agreed. Reading
 recorded data means knowing a layout, a layout has an owner, and two
 implementations of one question drift.
+
+## The two shipped strategies
+
+`qate.strategy.corvus` and `qate.strategy.pisces` are documentation that happens to
+run. They are the answer to "what does a real strategy look like", which an
+abstract base class cannot give.
+
+- **They are examples, not products.** Do not tune them, do not add features to
+  make them competitive, and do not let them accumulate a third and fourth variant.
+  A production strategy belongs in its own private repository.
+- **Do not simplify away the unglamorous parts.** `pisces`'s largest file does no
+  trading — it reconciles real balances before the strategy is allowed to start.
+  That file *is* the lesson; deleting it to make the example shorter would remove
+  the only thing the example has that a tutorial does not.
+- **Keep them honest about what they need.** Backtesting works with `qate` alone;
+  trading live needs an adapter. `SimulatorGateway` reports unlimited balances, so
+  pisces's rebalance paths only run against a real account, and the docs say so.
+- `tests/test_example_strategies.py` checks they still load, construct, and match
+  the config and params tables in `knowledge/strategies.md`. Example code that no
+  longer runs is worse than no example.
 
 ## Facts worth knowing before editing
 

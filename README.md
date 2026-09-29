@@ -29,12 +29,38 @@ over it. This is the library Enoshima sits on.
 |---|---|
 | `qate.core` | Event loop, models, order lifecycle, and the interfaces a venue implements |
 | `qate.trading` | Strategy base class, chart and bars, indicators, inventory, PnL, risk |
+| `qate.strategy` | Two worked strategies, shipped to be read |
 | `qate.simulator` | The gateway a backtest fills orders against, and the queues that drive it |
 | `qate.exchange` | The adapter contract and registry. No venue lives here |
 | `qate.store` | A run's own output: local metrics, parquet results, InfluxDB export |
 | `qate.env` | Named run directories, and machine-level settings |
 | `qate.boot` | Wiring a strategy, its gateways and its feeds together |
 | `qate.util` | Date ranges, counters, encoding, replay-aware logging |
+
+## Two worked strategies
+
+An abstract base class is a poor teacher, so `qate` ships two complete strategies:
+
+| Strategy | Is | Shows |
+|---|---|---|
+| `qate.strategy.corvus` | Read a list of orders, place them, exit | The order lifecycle alone — place, reprice, cancel, fill, stop |
+| `qate.strategy.pisces` | Cross-exchange arbitrage, maker one side and taker the other | A real idea, plus what startup, inventory and shutdown actually cost |
+
+Read **corvus** first: it has no signal, no inventory and no schedule, so what is
+left is the machinery every strategy needs and the part that is fiddly.
+
+**pisces** is the same framework carrying a real trading idea, and its largest file
+does no trading at all — it works out whether the strategy can start, because
+exchanges have no sub-accounts and a strategy cannot assume the balance it left
+behind. That ratio is the lesson, and it is what example strategies usually omit.
+
+Neither is tuned and neither is a recommendation. Backtesting them needs nothing
+but `qate`; trading them live needs an exchange adapter, which is a separate
+install by design.
+
+See [knowledge/strategies.md](knowledge/strategies.md), and
+[knowledge/strategy_layout.md](knowledge/strategy_layout.md) for the `Variant`
+contract to write your own.
 
 ## Market data comes from outside
 
@@ -168,6 +194,16 @@ through.
 
 Neither changes a result. Without `fast`, `qate.trading.aggression` runs the same
 code unjitted — slower on a long replay, identical in output.
+
+## Documentation
+
+| Document | Read it when |
+|---|---|
+| [knowledge/philosophy.md](knowledge/philosophy.md) | Deciding whether to add a check, a test, or a comment |
+| [knowledge/strategy_layout.md](knowledge/strategy_layout.md) | Writing a strategy: the `Variant` contract, config vs params |
+| [knowledge/strategies.md](knowledge/strategies.md) | Reading the two shipped strategies |
+| [knowledge/pisces.md](knowledge/pisces.md) | Why pisces is built the way it is |
+| [knowledge/env.md](knowledge/env.md) | Environments: the directory, the lock, config discovery |
 
 ## Development
 

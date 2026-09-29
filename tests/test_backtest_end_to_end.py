@@ -169,6 +169,50 @@ def test_backtest_reads_bronze_fills_orders_and_writes_results(tmp_path, monkeyp
     assert list(df["exec_price"]) == [buy.exec_price, sell.exec_price]
 
 
+def test_cancelling_an_already_filled_order_is_not_a_fault():
+    """The fill/cancel race a real strategy hits, and a venue tolerates.
+
+    An order can be matched against a book and the strategy can decide, from that
+    same book, to cancel it -- before the fill it caused has been delivered. The
+    simulator used to raise here, which surfaced as a logged traceback in every
+    run of a strategy that reprices. A venue answers "no such order"; so does this.
+
+    It must not publish an order error either: `Strategy` treats a cancel error as
+    grounds to stop trading, which would turn an unnecessary cancel into a halt.
+    """
+    gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
+    gateway.set_event_queue(SyncEventQueue(gateway.handlers))
+
+    errors: list = []
+    gateway.add_order_listener(_ErrorCollector(errors))
+
+    request = OrderRequest(
+        ts=START_TS,
+        market=MARKET,
+        side=Side.BUY,
+        price=MIDS[0],
+        size=0.01,
+        settle_type=SettleType.OPEN,
+        order_type=OrderType.DEFAULT,
+    )
+    gateway.create(request)
+    book = make_books([MIDS[0]])[0][1]
+    gateway.handle_order_book(book)          # fills, and forgets the order
+    assert request.ctx_id not in gateway.orders
+
+    gateway.cancel(request)                  # the race: must not raise
+    assert not [e for e in errors if e[0] == EventType.ORDER_ERROR]
+
+
+class _ErrorCollector:
+    def __init__(self, events: list):
+        self.events = events
+
+    def put(self, data):
+        if data is not None:
+            self.events.append(data)
+
+
 def test_a_backtest_never_asks_for_an_exchange(tmp_path, monkeypatch):
     """The publication guarantee, asserted where it matters.
 

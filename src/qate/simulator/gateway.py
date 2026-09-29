@@ -169,7 +169,18 @@ class SimulatorGateway(ExchangeGateway):
 
     def handle_cancel_order(self, order_request: OrderRequest):
         if order_request.ctx_id not in self.orders:
-            raise Exception(f"can not find order to cancel {order_request.ctx_id}")
+            # The order already completed. This is the ordinary fill/cancel race,
+            # not a fault: an order can be matched against a book and the strategy
+            # can decide to cancel it from that same book, before the fill it
+            # caused has been delivered. Live, the same race exists and the
+            # exchange answers "no such order" -- so this does the equivalent and
+            # lets the queued fill reconcile the strategy's view.
+            #
+            # It must not publish an order error either. `Strategy` treats a cancel
+            # error as grounds to stop trading, which is right for a cancel the
+            # venue refused and quite wrong for one that was unnecessary.
+            LOG.info(f"CANCEL for an already-completed order {order_request.ctx_id}; ignoring")
+            return
         order_tracker = self.orders[order_request.ctx_id]
         order_tracker.set_cancelled(self.now_ts)
         del self.orders[order_request.ctx_id]
