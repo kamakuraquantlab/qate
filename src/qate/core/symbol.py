@@ -1,6 +1,5 @@
 import decimal
 from enum import Enum, auto
-from typing import Union
 
 
 class Symbol(Enum):
