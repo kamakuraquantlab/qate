@@ -54,34 +54,62 @@ On subsequent calls it acquires the lock and runs normally.
 
 ## 5 Config discovery
 
-`desc.json` is the index of the environment. It contains a `Description` object:
+`qate.boot.config.load_trading_env(env)` reads an environment and returns a
+`TradingEnv`: the profile, the config, the params, the grid, the feature flags. It
+names the classes it wants rather than being told:
+
+```python
+from qate.boot.config import load_trading_env
+
+definition = load_trading_env(env)      # nothing entered, nothing locked
+definition.profile.strategy_name        # "my_strategy.v1"
+definition.config.get_markets()
+definition.params                       # what one run uses
+```
+
+The one class that cannot be known in advance is the strategy's own `Config`, and
+`trading.json` already names the strategy module, so it is resolved by convention:
+`<strategy_module>.config.Config`. That is the layout
+[03_writing_strategy.md](03_writing_strategy.md) documents.
+
+`env.load_object(file_name, cls)` is the single-file version, and what
+`load_trading_env` is built from. Type hooks are pre-registered for `ExchangeName`,
+`Symbol`, `Side`, `SettleType`, `Market` and `EnvName`, so those fields deserialize
+from their string forms; for `EnvName` the hook re-validates.
+
+### 5.1 `desc.json` and its module map
+
+`desc.json` used to carry a map from each file to the class that loads it:
 
 ```json
 {
   "name": "SOME_ENV",
-  "modules": {
-    "config": "qate.strategy.pisces.config.Config",
-    "params": "builtins.dict"
-  }
+  "modules": {"config": "my_strategy.config.Config", "params": "builtins.dict"}
 }
 ```
 
-`modules` maps a key to a fully-qualified class name. When `env.load()` is called, it reads
-`desc.json`, then for each key loads `{key}.json` from the work dir and deserializes it into
-the declared class using `dacite.from_dict()`. All loaded objects are kept in an internal
-dict.
+`Env.load()` still reads it, and nothing in the library requires it any more. The
+map bought no flexibility -- every reader already knew it wanted a
+`TradingProfile` and a dict -- and it cost a file that goes stale the moment code
+moves, pointing at a class that no longer exists while the code it describes works
+fine. Prefer `load_trading_env`, and let `desc.json` say only which environment
+this is.
 
-Apps retrieve objects by key:
+## 6 Where a run writes
+
+An environment is a *definition*. A process that runs it also produces output --
+logs, results, a lock -- and the two do not have to share a directory. `Env` takes
+a `work_dir` explicitly for that reason:
 
 ```python
-env.load()
-config = env.get("config")   # returns a Config instance
-params = env.get("params")   # returns a dict
+definition = Env(root, name)                                  # read from here
+output = Env(root, name, work_dir=Path("~/backtests") / name)  # write here
+output.enter()                                                # chdir, log, lock
 ```
 
-Type hooks are pre-registered for `ExchangeName`, `Symbol`, `Side`, `SettleType`, `Market`,
-and `EnvName` so those fields deserialize automatically from their string representations.
-For `EnvName` the hook is `EnvName(x)`, which re-validates the string on load.
+That is how one environment can serve a live process and a backtest at the same
+time: the backtest reads the config files, takes its own lock somewhere else, and
+never writes into the directory the live process is using.
 
 ## 6 Typical usage pattern
 

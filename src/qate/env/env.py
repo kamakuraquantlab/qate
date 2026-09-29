@@ -64,15 +64,24 @@ def get_git_rev(short_hash_len: int = 7) -> str:
 
 
 class Env:
+    """A named directory holding one run's configuration, and its lifecycle.
+
+    `work_dir` normally follows from the root and the name. Passing it explicitly
+    separates *where the definition is read from* from *where a run writes*, which
+    is what lets a backtest run against a live environment's config files without
+    taking that environment's lock or writing into its directory.
+    """
+
     def __init__(
         self,
         root_dir: str,
         env_name: EnvName,
         enable_multiprocess_logging: bool = False,
+        work_dir: str | None = None,
     ):
         self.root_dir = root_dir
         self.name = env_name
-        self.work_dir = os.path.join(self.root_dir, self.name)
+        self.work_dir = str(work_dir) if work_dir else os.path.join(self.root_dir, self.name)
         self.git_rev = get_git_rev()
         self.hooks = ENUM_TYPE_HOOKS.copy()
         self.objects = {}

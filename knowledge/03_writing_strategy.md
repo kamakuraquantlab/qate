@@ -91,13 +91,19 @@ loaded from `trading.json`:
 class TradingProfile:
     strategy_module_name: str   # e.g. "qate.strategy.pisces", or "my_strategy"
     variant: str = "v0"         # file name without .py
-    gateway_name: str = GatewayName.SIMULATOR
+    trading_config_key: str = "DEFAULT"
+    chat_config_key: str | None = None
 ```
 
 `strategy_name` returns `"{module}.{variant}"`, which is what appears in run logs
-and in the partition path of a result.
+and in the partition path of a result. `strategy_module_name` is also how
+`load_trading_env` finds your `Config` class, which is why the `config.py` layout
+above is a contract rather than a suggestion.
 
-`gateway_name` is `SIMULATOR` or `PROD`. `PROD` needs an exchange adapter
+Which *gateway* a run uses is not here. That is a property of the process doing the
+running — a live runner passes `GatewayName.PROD` to `Configurator`, a backtest
+simulates — not of the environment. It used to be a profile field, which meant half
+its readers ignored it and it went stale. `PROD` needs an exchange adapter
 installed; without one it raises, naming what is registered. That is deliberate —
 see [../AGENTS.md](../AGENTS.md).
 
