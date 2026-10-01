@@ -54,7 +54,7 @@ class Reporter(StatusFeed):
         """The run has started.
 
         No argument: a reporter is constructed knowing which run it speaks for, and
-        `Bootstrap` is a `Thread`, so its `name` is the thread's.
+        `Runtime` is a `Thread`, so its `name` is the thread's.
         """
 
     def on_stop(self) -> None:

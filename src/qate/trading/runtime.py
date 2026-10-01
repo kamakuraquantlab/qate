@@ -17,9 +17,18 @@ from qate.util.counter import Stat
 LOG = getLogger(__name__)
 
 
-class Bootstrap(EventLoop):
-    """
-    A class that does everything except trading
+class Runtime(EventLoop):
+    """Everything a run needs except the trading itself.
+
+    `Trader` decides; this owns the process around it -- the connections, the
+    gateways, the metric log, the reporters -- and the event loop they all publish
+    into. The division is what lets a backtest skip this class entirely: Enoshima
+    drives a `Trader` with a `ReplayQueue` and never needs a live loop.
+
+    It was called `Bootstrap` and lived in a `qate.boot` package that also held the
+    environment directory, the credential lookup and the config loader. Those are a
+    deployment's concerns rather than a library's and are now `qate-env`; what was
+    left is this, which is `qate.trading`'s all along.
     """
 
     def __init__(self, strategy: Strategy):

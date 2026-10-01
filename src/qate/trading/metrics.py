@@ -7,7 +7,7 @@ happen to one afterwards.
 
 `FeedWriter` is the way out of a strategy: `Strategy.add_metric` buffers into it and
 it publishes batches as `METRICS` events, so a strategy never touches a file.
-Whatever is running the strategy decides where they go -- `Bootstrap` writes a
+Whatever is running the strategy decides where they go -- `Runtime` writes a
 `MetricLog`, a backtest writes its own.
 
 `MetricLog` is that file: a rotating, append-only local record.

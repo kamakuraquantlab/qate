@@ -1,9 +1,9 @@
 import json
 from dataclasses import dataclass, field
 
-from qate.boot.config import BootConfig
 from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, Side, Symbol
+from qate.trading.config import StrategyConfig
 
 # Maximum order size per (exchange, symbol).
 # Requests larger than this are split into equal chunks.
@@ -43,7 +43,7 @@ def _split(instr: OrderInstruction) -> list[OrderInstruction]:
 
 
 @dataclass
-class Config(BootConfig):
+class Config(StrategyConfig):
     instructions: list[OrderInstruction] = field(default_factory=list)
     reprice_interval: float = 5.0
 

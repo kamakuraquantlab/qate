@@ -8,15 +8,15 @@ They stop short of replaying a strategy: what `pisces` does with a fill is
 Enoshima's to exercise, and `corvus` needs a live gateway to be interesting.
 """
 
+import importlib
 import json
 
 import pytest
 
-from qate.boot.config import BootConfig
-from qate.boot.strategy_loader import get_strategy_class
 from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Side
 from qate.core.symbol import Symbol
+from qate.trading.config import StrategyConfig
 from qate.trading.strategy import Strategy
 
 SHIPPED = [
@@ -26,8 +26,19 @@ SHIPPED = [
 ]
 
 
+def get_strategy_class(module_name: str, variant: str):
+    """The convention a runner uses to find a strategy, applied here by hand.
+
+    `qate_env.trading_env.get_strategy_class` is the shipped one, and it is not a
+    dependency of this package: a strategy declares the convention, a deployment
+    uses it. Two lines are cheaper than the dependency, and this file is the one
+    that has to care whether the shipped strategies still follow it.
+    """
+    return importlib.import_module(f"{module_name}.{variant}").Variant
+
+
 @pytest.mark.parametrize("module_name,variant", SHIPPED)
-def test_the_loader_finds_a_variant(module_name, variant):
+def test_a_variant_is_loadable_by_name(module_name, variant):
     """Exactly one class named Variant per file, extending Strategy."""
     cls = get_strategy_class(module_name, variant)
     assert cls.__name__ == "Variant"
@@ -123,7 +134,7 @@ def pisces_config():
 
 def test_pisces_default_config_is_a_bootconfig():
     config = pisces_config()
-    assert isinstance(config, BootConfig)
+    assert isinstance(config, StrategyConfig)
     assert config.get_exchanges() == [ExchangeName.BITBANK, ExchangeName.GMO]
 
 

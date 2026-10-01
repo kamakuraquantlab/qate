@@ -10,7 +10,7 @@ like, as long as it is importable:
 
 ```
 my_strategy/
-  config.py          # Config dataclass, extends BootConfig
+  config.py          # Config dataclass, extends StrategyConfig
   v1.py              # Variant 1 — one Variant class per file
   v2.py              # Variant 2
   ...
@@ -21,13 +21,17 @@ package sitting beside where you run it is found without installing anything.
 
 ## 2 The Variant class
 
-The loader imports `{strategy_module}.{variant_name}` and looks up `Variant`:
+A loader imports `{strategy_module}.{variant_name}` and looks up `Variant`:
 
 ```python
-# qate/boot/strategy_loader.py
+# qate_env/trading_env.py
 module = importlib.import_module(module_name + "." + variant_name)
 StrategyClass = module.Variant
 ```
+
+The convention is `qate`'s and the loader is not: finding a strategy by name is
+something a *deployment* does, so it lives in `qate-env` with the environment file
+that names one. Anything that can import a module can do it in two lines.
 
 So every variant file contains exactly one class named `Variant`, extending
 `Strategy[Config]`:
@@ -83,8 +87,10 @@ what v1 meant.
 
 ## 5 TradingProfile
 
-`qate.boot.config.TradingProfile` ties an environment to a variant at runtime,
-loaded from `trading.json`:
+`qate_env.trading_env.TradingProfile` ties an environment to a variant at runtime,
+loaded from `trading.json`. It is `qate-env`'s class rather than `qate`'s — a
+strategy never reads it, a runner does — and it is here because it is the other half
+of the layout above:
 
 ```python
 @dataclass
@@ -105,8 +111,8 @@ and in the partition path of a result. `strategy_module_name` is also how
 above is a contract rather than a suggestion.
 
 Which *gateway* a run uses is not here. That is a property of the process doing the
-running — a live runner passes `GatewayName.PROD` to `Configurator`, a backtest
-simulates — not of the environment. It used to be a profile field, which meant half
+running — a live runner passes `GatewayName.PROD` to `qate_env`'s `Configurator`, a
+backtest simulates — not of the environment. It used to be a profile field, which meant half
 its readers ignored it and it went stale. `PROD` needs an exchange adapter
 installed; without one it raises, naming what is registered. That is deliberate —
 see [../AGENTS.md](../AGENTS.md).

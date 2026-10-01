@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 
-from qate.boot.config import BootConfig
 from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, Symbol
+from qate.trading.config import StrategyConfig
 
 
 @dataclass
@@ -13,7 +13,7 @@ class PairConfig:
 
 
 @dataclass
-class Config(BootConfig):
+class Config(StrategyConfig):
     maker_exchange: ExchangeName
     taker_exchange: ExchangeName
     pairs: list[PairConfig] = field(default_factory=list)

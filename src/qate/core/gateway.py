@@ -32,8 +32,8 @@ nothing read.
 ## A live runtime needs more than this
 
 `start`, `stop` and `join` are not here. This is what a *strategy* needs; running a
-gateway as a long-lived process needs a lifecycle too, and `qate.boot.Bootstrap`
-calls those three. `QueuedGateway` has them from `EventLoop`, and a composite
+gateway as a long-lived process needs a lifecycle too, and
+`qate.trading.runtime.Runtime` calls those three. `QueuedGateway` has them from `EventLoop`, and a composite
 forwards them. A simulator has nothing to start, which is exactly why they do not
 belong in the contract.
 """

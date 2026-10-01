@@ -23,17 +23,22 @@ downloads it, [Hase](https://github.com/kamakuraquantlab/Hase) derives features
 from it, and [Enoshima](https://github.com/kamakuraquantlab/Enoshima) backtests
 over it. This is the library Enoshima sits on.
 
+It also has no notion of a deployment — no run directory, no host, no credential.
+That is [qate-env](https://github.com/kamakuraquantlab/qate-env), which both
+Enoshima and a live runner use to turn a directory of JSON into a run.
+
 ## Layout
 
 | Package | Holds |
 |---|---|
 | `qate.core` | Event loop, models, order lifecycle, and the interfaces a venue implements |
-| `qate.trading` | Strategy base class, gateways (live and simulated), the replay queue, bars and charts, indicators, inventory, PnL, the metric log |
+| `qate.trading` | Strategy base class and its config contract, gateways (live and simulated), the replay queue, bars and charts, indicators, inventory, PnL, the metric log, and the `Runtime` a live process runs in |
 | `qate.strategy` | Two worked strategies, shipped to be read |
 | `qate.exchange` | The adapter contract and registry. No venue lives here |
-| `qate.env` | Named run directories, and machine-level settings |
-| `qate.boot` | Wiring a strategy, its gateways and its feeds together |
 | `qate.util` | Date ranges, counters, encoding, replay-aware logging |
+
+Run directories, credentials and the loader that reads them are not here; they are
+`qate-env`. Nothing in this package names a path, a host or a key.
 
 ## Two worked strategies
 
@@ -121,12 +126,14 @@ the few things a person wants to see while a strategy runs.
 
 ```python
 from qate.trading.reporter import Reporter
+from qate.trading.runtime import Runtime
 
 class Printer(Reporter):
     def on_order(self, order_response):
         print(order_response.summary)
 
-bootstrap.add_reporter(Printer())
+runtime = Runtime(strategy)      # the loop a live run sits in: conns, gateways, metrics
+runtime.add_reporter(Printer())
 ```
 
 One method per kind of outcome — `on_order`, `on_pnl_update`, `on_summary`,
@@ -135,7 +142,8 @@ default, so implement what you care about. Several reporters can be added and ea
 sees everything. A reporter that raises is logged and ignored: a run does not
 depend on anyone being told.
 
-No implementation ships here. K2's `DiscordReporter` is one.
+No implementation ships here — a destination is a dependency, and a chat client in
+this package would be one nobody backtesting asked for. A live runner adds its own.
 
 ## What a run records
 
@@ -187,29 +195,30 @@ load an adapter from a checkout that is not installed.
 
 ## Settings
 
-| What | Where |
-|---|---|
-| Run directories | `~/env`, or `QATE_ENV_ROOT`, or `env_root_dir` in a `.qate.json` beside the script |
-| A run's configuration | `trading.json`, `config.json`, `params.json` in the run directory, read by `qate.boot.load_trading_env` |
-| Credentials | `~/.qate/<service>.keys`, INI, one section per key set |
+There are none. `qate` reads no configuration file, consults no environment
+variable, and holds no default path — a `Strategy` is handed its config object and
+its params dict by whatever constructed it, and that is the whole of it.
 
-There is no market-data setting. `qate` does not read market data, so it has no
-opinion about where it is.
+Run directories, credential files and the loader that turns them into those objects
+are [qate-env](https://github.com/kamakuraquantlab/qate-env). A backtest therefore
+asks for no credential because there is nothing here that could ask: an
+unauthenticated fallback is not a thing this package can express.
 
-A backtest asks for no credential. `qate.env.sys_env` raises
-`CredentialsNotFound` naming the file it looked for rather than falling back to
-an unauthenticated call, so a live run fails at startup instead of part way
-through.
+There is no market-data setting either. `qate` does not read market data, so it has
+no opinion about where it is.
 
 ## Documentation
 
 | Document | Read it when |
 |---|---|
 | [knowledge/01_philosophy.md](knowledge/01_philosophy.md) | Deciding whether to add a check, a test, or a comment |
-| [knowledge/02_env.md](knowledge/02_env.md) | Environments: the directory, the lock, config discovery |
 | [knowledge/03_writing_strategy.md](knowledge/03_writing_strategy.md) | Writing a strategy: the `Variant` contract, config vs params |
 | [knowledge/04_pisces.md](knowledge/04_pisces.md) | Cross-exchange arbitrage: startup, rebalance, shutdown |
 | [knowledge/05_corvus.md](knowledge/05_corvus.md) | Single-shot order execution — the order lifecycle alone |
+
+Environments — the directory, the lock, config discovery — are
+[qate-env's knowledge/01_env.md](https://github.com/kamakuraquantlab/qate-env/blob/main/knowledge/01_env.md).
+They were `knowledge/02_env.md` here, which is why the numbering skips.
 
 ## Development
 

@@ -124,7 +124,7 @@ class PairConfig:
     order_size: float
 
 @dataclass
-class Config(BootConfig):
+class Config(StrategyConfig):
     maker_exchange: ExchangeName
     taker_exchange: ExchangeName
     pairs: list[PairConfig]

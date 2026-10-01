@@ -149,7 +149,7 @@ class Variant(Strategy[Config]):
             self._write_rebalance_file(plan, symbol)
 
         self._is_ready = True  # let Warmup exit cleanly
-        self.publish_status(EventType.EV_LOOP_EXIT, self)  # signal Bootstrap to stop
+        self.publish_status(EventType.EV_LOOP_EXIT, self)  # signal the Runtime to stop
         raise EventLoopExit()
 
     def _write_rebalance_file(self, plan: AllocationPlan, symbol):

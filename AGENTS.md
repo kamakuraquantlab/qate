@@ -20,8 +20,12 @@ Concretely, and in order of how easy each is to break by accident:
 2. **No venue endpoint, symbol mapping, or request signing belongs here.**
    `qate.core.conn` declares what a connection *is*; the implementation is an
    adapter's.
-3. **No credential may have a default.** `qate.env.sys_env` raises
-   `CredentialsNotFound` naming the file it looked for. It never falls back.
+3. **No credential, path or host may be named here at all.** Not "no default" —
+   none. Credentials, run directories and machine settings are `qate-env`, so this
+   package has nothing that could read a key or fall back to an unauthenticated
+   call. `qate.env.sys_env` was here and raised `CredentialsNotFound`; the rule was
+   weaker then, because a rule about how to read a credential is weaker than not
+   being able to.
 4. **Nothing that only makes sense from the inside.** No absolute warehouse path,
    bucket name or production environment name; no reference to a repository or
    document the reader cannot open. Applies to source, tests, docs and fixtures
@@ -44,19 +48,30 @@ Two tests hold this, and both are worth understanding before changing them:
 | A venue, or anything venue-specific | `qate-exchanges` | here |
 | A live-trading dev program | `qate-exchanges/tools/` | `tests/` |
 | A production strategy | its own private repo | here |
+| Anything naming a directory, host or credential | `qate-env` | here |
+| A file an environment can contain, or its loader | `qate-env` | here |
 | A third worked example | probably nowhere — two is the point | |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
 | Another way of satisfying `ExchangeGateway` | `qate.trading.gateways` | `qate.core` |
 | A way of reading recorded market data | the replayer (Enoshima) | here |
 | A way of storing a run's output | the tool that produces it (Enoshima) | here |
 
-**Every module here has a consumer here.** Three sweeps have now removed code that
+**Every module here has a consumer here.** Four sweeps have now removed code that
 was in this package only because it was in the private library it came from:
-`qate.store`'s parquet and InfluxDB layers, `chart2.py`, and the feature-engineering
-and risk modules in `qate.trading`. Before adding a module, name what in this
-package or in Enoshima will import it. Before keeping one, check that something
-still does — and check `qate-exchanges` too, which also depends on this package and
-which one of those sweeps nearly broke.
+`qate.store`'s parquet and InfluxDB layers, `chart2.py`, the feature-engineering
+and risk modules in `qate.trading`, and `qate.env` with `qate.boot` — a run
+directory, a credential lookup and a config loader, none of which anything here
+imported. Before adding a module, name what in this package or in Enoshima will
+import it. Before keeping one, check that something still does — and check
+`qate-env`, `qate-exchanges` and the private live runner too, all of which depend on
+this package; one of those sweeps nearly broke `qate-exchanges`.
+
+**`qate.trading.runtime.Runtime` is the exception, and knowingly.** Nothing here
+imports it: a backtest drives a `Trader` directly and the live runner that needs a
+loop is private. It stays because it is what gives `Reporter` and `MetricLog` a
+meaning — the composition they were designed for, expressed in the package that
+defines them — and because it names nothing outside this package.
+`tests/test_reporter.py` is its consumer.
 
 **`qate` does not read market data and does not know where it lives.** A replayer
 hands it events. This was not the original shape: there was a `qate.data.bronze`
@@ -84,6 +99,11 @@ abstract base class cannot give.
 - `tests/test_example_strategies.py` checks they still load, construct, and match
   the config and params tables in `knowledge/04_pisces.md`. Example code that no
   longer runs is worse than no example.
+- **Their `Config` extends `qate.trading.config.StrategyConfig`** — two methods
+  saying which venues and which markets a run needs. It was `qate.boot.config.BootConfig`,
+  in a module that also read JSON files and knew where credentials live; a strategy
+  implements the contract, so the contract belongs beside `Strategy` and the rest
+  went to `qate-env`.
 
 ## Facts worth knowing before editing
 
@@ -132,7 +152,7 @@ abstract base class cannot give.
   assigns it directly. The box size lives on the closer now, so without the
   forwarding setter that assignment would land on an unused attribute and the box
   size would silently never change. `set_box_size` is the supported way.
-- **A reporter is the one place that swallows exceptions.** `Bootstrap._report`
+- **A reporter is the one place that swallows exceptions.** `Runtime._report`
   logs and continues, because nothing about a trading decision depends on anyone
   being told and an unreachable webhook must not take a live strategy down. That is
   deliberately the opposite of the rule below; do not copy the pattern elsewhere.

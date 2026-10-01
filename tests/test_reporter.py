@@ -6,13 +6,13 @@ webhook must log and be ignored. That is the opposite of the fail-fast rule
 everywhere else in this library, and deliberately so.
 """
 
-from qate.boot.bootstrap import Bootstrap
 from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, SettleType, Side
 from qate.core.order import OrderRequest, OrderResponse, OrderState, OrderType
 from qate.core.symbol import Symbol
 from qate.trading.pnl_tracker import PnlUpdate
 from qate.trading.reporter import Reporter
+from qate.trading.runtime import Runtime
 from qate.trading.strategy import Strategy
 
 MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
@@ -105,20 +105,20 @@ def pnl(settle_type: SettleType) -> PnlUpdate:
     )
 
 
-def bootstrap(tmp_path, monkeypatch, *reporters) -> Bootstrap:
+def runtime(tmp_path, monkeypatch, *reporters) -> Runtime:
     monkeypatch.chdir(tmp_path)  # the metric log writes to cwd
-    boot = Bootstrap(Strategy())
+    run = Runtime(Strategy())
     for reporter in reporters:
-        boot.add_reporter(reporter)
-    return boot
+        run.add_reporter(reporter)
+    return run
 
 
 def test_a_fill_reaches_every_reporter(tmp_path, monkeypatch):
     a, b = Recorder(), Recorder()
-    boot = bootstrap(tmp_path, monkeypatch, a, b)
+    run = runtime(tmp_path, monkeypatch, a, b)
 
     response = fill()
-    boot.handle_order(response)
+    run.handle_order(response)
 
     assert a.kinds == ["on_order"]
     assert b.kinds == ["on_order"]
@@ -127,12 +127,12 @@ def test_a_fill_reaches_every_reporter(tmp_path, monkeypatch):
 
 def test_a_close_reports_the_update_and_the_running_summary(tmp_path, monkeypatch):
     recorder = Recorder()
-    boot = bootstrap(tmp_path, monkeypatch, recorder)
+    run = runtime(tmp_path, monkeypatch, recorder)
 
-    boot.handle_pnl_update(pnl(SettleType.OPEN))
+    run.handle_pnl_update(pnl(SettleType.OPEN))
     assert recorder.kinds == ["on_pnl_update"]
 
-    boot.handle_pnl_update(pnl(SettleType.CLOSE))
+    run.handle_pnl_update(pnl(SettleType.CLOSE))
     assert recorder.kinds == ["on_pnl_update", "on_pnl_update", "on_summary"]
 
     _, market_id, summary = recorder.calls[-1]
@@ -143,20 +143,20 @@ def test_a_close_reports_the_update_and_the_running_summary(tmp_path, monkeypatc
 def test_an_open_reports_no_summary(tmp_path, monkeypatch):
     """A summary is the running total after a position closed, not on every event."""
     recorder = Recorder()
-    boot = bootstrap(tmp_path, monkeypatch, recorder)
-    boot.handle_pnl_update(pnl(SettleType.OPEN))
+    run = runtime(tmp_path, monkeypatch, recorder)
+    run.handle_pnl_update(pnl(SettleType.OPEN))
     assert "on_summary" not in recorder.kinds
 
 
 def test_exceptions_and_messages_are_reported(tmp_path, monkeypatch):
     recorder = Recorder()
-    boot = bootstrap(tmp_path, monkeypatch, recorder)
+    run = runtime(tmp_path, monkeypatch, recorder)
 
     error = RuntimeError("something broke")
-    boot.put(EventType.EXCEPTION, error)
-    boot.put(EventType.MSG_OUT, "hello")
+    run.put(EventType.EXCEPTION, error)
+    run.put(EventType.MSG_OUT, "hello")
     for _ in range(2):
-        boot._next()
+        run._next()
 
     assert recorder.kinds == ["on_exception", "on_message"]
     assert recorder.calls[0][1] is error
@@ -166,10 +166,10 @@ def test_exceptions_and_messages_are_reported(tmp_path, monkeypatch):
 def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
     """The isolation guarantee. A run must survive an unreachable destination."""
     good = Recorder()
-    boot = bootstrap(tmp_path, monkeypatch, Exploding(), good)
+    run = runtime(tmp_path, monkeypatch, Exploding(), good)
 
-    boot.handle_order(fill())
-    boot.handle_pnl_update(pnl(SettleType.CLOSE))
+    run.handle_order(fill())
+    run.handle_pnl_update(pnl(SettleType.CLOSE))
 
     # The working reporter still saw everything, in order.
     assert good.kinds == ["on_order", "on_pnl_update", "on_summary"]
@@ -177,9 +177,9 @@ def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
 
 def test_a_reporter_that_overrides_nothing_is_harmless(tmp_path, monkeypatch):
     """Every hook is a no-op, so a reporter implements only what it cares about."""
-    boot = bootstrap(tmp_path, monkeypatch, Reporter())
-    boot.handle_order(fill())
-    boot.handle_pnl_update(pnl(SettleType.CLOSE))
+    run = runtime(tmp_path, monkeypatch, Reporter())
+    run.handle_order(fill())
+    run.handle_pnl_update(pnl(SettleType.CLOSE))
 
 
 def test_a_reporter_can_send_messages_back_to_the_strategy(tmp_path, monkeypatch):
@@ -191,12 +191,12 @@ def test_a_reporter_can_send_messages_back_to_the_strategy(tmp_path, monkeypatch
             received.append(msg)
 
     monkeypatch.chdir(tmp_path)
-    boot = Bootstrap(Listening())
+    run = Runtime(Listening())
     reporter = Recorder()
-    boot.add_reporter(reporter)
+    run.add_reporter(reporter)
 
     reporter.publish_status(EventType.MSG_IN, "status?")
-    boot._next()
+    run._next()
 
-    # Bootstrap routes MSG_IN to the trader, which passes it to the strategy.
-    assert boot.trader.event_queue.get(timeout=0.1) == (EventType.MSG_IN, "status?")
+    # Runtime routes MSG_IN to the trader, which passes it to the strategy.
+    assert run.trader.event_queue.get(timeout=0.1) == (EventType.MSG_IN, "status?")

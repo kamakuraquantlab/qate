@@ -3,12 +3,13 @@
 | Package | Holds |
 |---|---|
 | `core` | Event loop, models, orders, and the interfaces a venue implements |
-| `trading` | Strategy base class, charts, indicators, inventory, PnL, risk, the metric log |
-| `simulator` | The gateway a backtest fills orders against |
+| `trading` | Strategy base class, charts, indicators, inventory, PnL, gateways, the metric log, the live runtime |
+| `strategy` | Two worked strategies, shipped to be read |
 | `exchange` | The adapter contract and registry. No venue lives here |
-| `env` | Named run directories, and machine-level settings |
-| `boot` | Wiring a strategy, its gateways and its feeds together |
 | `util` | Date ranges, serialization, counters, logging |
+
+A run directory, a credential and the loader that reads them are not here: they are
+`qate-env`. Nothing in this package names a path, a host or a key.
 
 It reaches no exchange. Venue adapters are separate installs that register
 themselves with `qate.exchange`; without one there is no code here that can
