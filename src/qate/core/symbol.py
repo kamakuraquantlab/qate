@@ -3,38 +3,20 @@ from enum import Enum
 
 
 class Symbol(Enum):
-    """A traded instrument. **The numbers are the wire format -- never reuse one.**
-
-    Written out rather than `auto()`, and that is the whole point of this class being
-    the way it is. A metric packs `symbol.value`, not its name, so with `auto()` the
-    numbering came from position and deleting an unused member silently renumbered
-    every member after it -- which silently relabels every metric file and every
-    recorded msgpack already on disk. The gaps below are members that were deleted;
-    leaving their numbers unused is what keeps the files written before then readable.
-
-    Adding a symbol means taking the next free number. Deleting one is now safe, and
-    means never giving its number to anything else.
-    """
-
     BTC_JPY = 1
     ETH_JPY = 2
     XRP_JPY = 3
-    # 4, 5 were BCH_JPY, LTC_JPY
     SOL_JPY = 6
-    # 7, 8, 9 were ADA_JPY, DOGE_JPY, LINK_JPY
 
     BTC_SPOT = 10
     ETH_SPOT = 11
     XRP_SPOT = 12
-    # 13, 14 were BCH_SPOT, LTC_SPOT
     SOL_SPOT = 15
-    # 16-20 were DOGE_SPOT, ADA_SPOT, DOT_SPOT, MONA_SPOT, DAI_SPOT
 
     BTC_USDT = 21
     ETH_USDT = 22
     XRP_USDT = 23
     SOL_USDT = 24
-    # 25-29 were BCH_USDT, LTC_USDT, ADA_USDT, DOGE_USDT, LINK_USDT
 
 
 class Unit(Enum):
