@@ -5,20 +5,7 @@ from qate.trading.indicator import Indicator
 
 
 class SMA(Indicator):
-    """
-    Simple Moving Average
-
-    Calculates the arithmetic mean of closing prices over a specified period.
-    """
-
     def __init__(self, period: int, field: str = "close"):
-        """
-        Initialize SMA indicator.
-
-        Args:
-            period: Number of bars to average
-            field: Bar field to use (default: "close")
-        """
         self.period = period
         self.field = field
 

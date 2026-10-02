@@ -108,20 +108,6 @@ class PnlTracker:
         self._pending_open_fee = 0.0
 
     def register_fee(self, market: Market) -> FeeSchedule | None:
-        """Resolve and keep what `market` charges, once, before it is traded.
-
-        One tracker covers several markets on purpose -- pisces shares one between a
-        maker venue and a taker venue, which is what makes its round-trip PnL a round
-        trip -- so the rate is per market here rather than per tracker, and a fill is
-        costed with the rate of the market it happened on.
-
-        `Inventory` calls this with its own market, so a strategy built the usual way
-        needs nothing. A strategy that costs fills without an `Inventory` calls it
-        itself, per market, at setup.
-
-        Returns what it found, `None` included, for a caller that wants to check.
-        `None` is not fatal: the market is costed at zero and `_fee` says so once.
-        """
         schedule = factory.get_fee_rate(market)
         if schedule is None:
             LOG.warning(
@@ -136,7 +122,6 @@ class PnlTracker:
         return schedule
 
     def _fee(self, market: Market, notional: float, order_type: OrderType) -> float:
-        """What one fill costs. Negative for a maker fill on a rebating venue."""
         schedule = self.fee_rates.get(market.id)
         if schedule is None:
             self._warn_unknown(market)
@@ -144,7 +129,6 @@ class PnlTracker:
         return notional * schedule.rate(order_type)
 
     def _warn_unknown(self, market: Market) -> None:
-        """Once per market: a fill arrived on a market nobody registered a rate for."""
         if market.id in self._unknown_markets:
             return
         self._unknown_markets.add(market.id)
@@ -233,8 +217,7 @@ class PnlTracker:
             # Closing a short position (buy back)
             if self.short_position < size - EPSILON:
                 raise ValueError(
-                    f"Cannot close {size:.6f} short, only have {self.short_position:.6f}. "
-                    f"Order: {req.summary}"
+                    f"Cannot close {size:.6f} short, only have {self.short_position:.6f}. Order: {req.summary}"
                 )
 
             # Calculate PnL: profit if we buy back cheaper than we sold
@@ -258,8 +241,7 @@ class PnlTracker:
             # Closing a long position (sell out)
             if self.long_position < size - EPSILON:
                 raise ValueError(
-                    f"Cannot close {size:.6f} long, only have {self.long_position:.6f}. "
-                    f"Order: {req.summary}"
+                    f"Cannot close {size:.6f} long, only have {self.long_position:.6f}. Order: {req.summary}"
                 )
 
             # Calculate PnL: profit if we sell higher than we bought
@@ -308,12 +290,6 @@ class PnlTracker:
         )
 
     def unwind_open(self, open_response: OrderResponse):
-        """Reverse a previously recorded OPEN when the matching CLOSE order fails.
-
-        Uses the filled maker response (not the failed taker response) so that
-        size and fee are correct. Resets the deferred open-leg fee so the tracker
-        stays consistent when a taker order errors out after the maker already filled.
-        """
         req = open_response.order_request
         size = open_response.exec_size
 

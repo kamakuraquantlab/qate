@@ -8,13 +8,13 @@ from qate.trading.config import StrategyConfig
 # Maximum order size per (exchange, symbol).
 # Requests larger than this are split into equal chunks.
 MAX_ORDER_SIZE: dict[tuple[ExchangeName, Symbol], float] = {
-    (ExchangeName.GMO,       Symbol.BTC_SPOT): 0.001,
-    (ExchangeName.GMO,       Symbol.ETH_SPOT): 0.1,
-    (ExchangeName.GMO,       Symbol.XRP_SPOT): 100.0,
-    (ExchangeName.GMO,       Symbol.SOL_JPY):  1.0,
-    (ExchangeName.BITBANK,   Symbol.BTC_SPOT): 0.001,
-    (ExchangeName.BITBANK,   Symbol.ETH_SPOT): 0.1,
-    (ExchangeName.BITBANK,   Symbol.XRP_SPOT): 100.0,
+    (ExchangeName.GMO, Symbol.BTC_SPOT): 0.001,
+    (ExchangeName.GMO, Symbol.ETH_SPOT): 0.1,
+    (ExchangeName.GMO, Symbol.XRP_SPOT): 100.0,
+    (ExchangeName.GMO, Symbol.SOL_JPY): 1.0,
+    (ExchangeName.BITBANK, Symbol.BTC_SPOT): 0.001,
+    (ExchangeName.BITBANK, Symbol.ETH_SPOT): 0.1,
+    (ExchangeName.BITBANK, Symbol.XRP_SPOT): 100.0,
     (ExchangeName.COINCHECK, Symbol.BTC_SPOT): 0.001,
     (ExchangeName.COINCHECK, Symbol.ETH_SPOT): 0.1,
     (ExchangeName.COINCHECK, Symbol.XRP_SPOT): 100.0,
@@ -71,12 +71,14 @@ class Config(StrategyConfig):
                 d = json.loads(line)
                 if "type" in d:
                     continue  # skip result lines written by a previous run
-                raw.append(OrderInstruction(
-                    exchange=ExchangeName[d["exchange"].upper()],
-                    symbol=Symbol[d["symbol"].upper()],
-                    side=Side[d["side"].upper()],
-                    amount=float(d["amount"]),
-                ))
+                raw.append(
+                    OrderInstruction(
+                        exchange=ExchangeName[d["exchange"].upper()],
+                        symbol=Symbol[d["symbol"].upper()],
+                        side=Side[d["side"].upper()],
+                        amount=float(d["amount"]),
+                    )
+                )
         instructions = []
         for instr in raw:
             instructions.extend(_split(instr))

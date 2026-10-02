@@ -1,29 +1,3 @@
-"""The gateway a backtest fills orders against.
-
-Satisfies `qate.core.gateway.ExchangeGateway` with no thread and no queue:
-`create()` records the order and returns, and the order is matched by the next
-order book handed to `handle_order_book`. Everything happens inside the caller's
-call, which is what makes a replay deterministic and single-threaded.
-
-It reaches nothing. Fills come from the order books fed into it, so a backtest is
-offline by construction rather than by configuration.
-
-It simulates a *named* exchange -- `SimulatorGateway(ExchangeName.GMO)` -- so a
-strategy is exercised against the same symbols, tick sizes and lot sizes it will
-meet in production.
-
-It sits beside the live gateways rather than in a package of its own because being
-a simulator is not a different kind of thing: it is a fourth way of satisfying one
-contract, and the only one this package can offer by itself. Keeping it here is
-what stops `ExchangeGateway` from quietly growing a thread again -- the interface
-has to fit an implementation that has none.
-
-That is also why there is no `set_event_queue` any more. This used to inherit an
-event loop from the contract, so a backtest had to pass it a queue that dispatched
-synchronously in order to get fills inside the strategy's own call. The contract no
-longer carries a loop, so the workaround is gone.
-"""
-
 from itertools import count
 from logging import getLogger
 
@@ -53,17 +27,6 @@ class Id:
 
 class SimulatorGateway(ExchangeGateway):
     def __init__(self, exchange_name: ExchangeName, slippage_rate: float = 0.0, immediate_fill: bool = False):
-        """
-        Initialize simulator gateway.
-
-        Args:
-            exchange_name: Exchange to simulate
-            slippage_rate: Slippage rate for taker orders (default 0.0 = no slippage)
-                          For real-time simulation, use 0.0005 (5 basis points)
-                          For backtesting, use 0.0 if slippage is applied elsewhere
-            immediate_fill: If True, fill taker orders at requested price (for testing only)
-                           Default False uses market price + slippage
-        """
         super().__init__()
         self._exchange_name = exchange_name
         self.slippage_rate = slippage_rate
@@ -79,11 +42,6 @@ class SimulatorGateway(ExchangeGateway):
         return self._exchange_name
 
     def subscribe_market_data_feed(self, market_feed: MarketDataFeed):
-        """Take books straight from a live feed, for paper trading.
-
-        A replay does not use this: the driver hands books to
-        `handle_order_book` itself, in the same pass that reaches the strategy.
-        """
         market_feed.add_order_book_listener(_OrderBookSink(self))
 
     def handle_order_book(self, order_book: OrderBook):
@@ -110,16 +68,6 @@ class SimulatorGateway(ExchangeGateway):
                 self.match_taker_order(order_tracker, market_price)
 
     def match_maker_order(self, order_tracker: OrderTracker, market_price: MarketPrice):
-        """
-        Match maker (limit) order.
-
-        Maker orders add liquidity to the orderbook. They fill when:
-        - BUY: order price >= current best ask (would cross the spread)
-        - SELL: order price <= current best bid (would cross the spread)
-
-        When filled, use the order's limit price (not market price) since
-        maker orders provide liquidity at their specified price.
-        """
         # TODO implement partial match
         # TODO implement post_only
         order_request = order_tracker.order_request
@@ -147,13 +95,6 @@ class SimulatorGateway(ExchangeGateway):
                 self._fill_order(order_tracker, market_price.bid)
 
     def match_taker_order(self, order_tracker: OrderTracker, market_price: MarketPrice):
-        """
-        Match taker (market) order with configurable slippage.
-
-        Taker orders remove liquidity and pay slippage.
-        Slippage rate is configurable via constructor parameter.
-        If immediate_fill is True, fills at order's requested price (for testing).
-        """
         order_request = order_tracker.order_request
 
         if self.immediate_fill:
@@ -186,11 +127,6 @@ class SimulatorGateway(ExchangeGateway):
         self.publish_order_filled(order_tracker.filled_response())
 
     def create(self, order_request: OrderRequest):
-        """Record the order. It is matched by the next order book, not by this call.
-
-        That one-book delay is the latency model: an order cannot be filled by the
-        snapshot the strategy was looking at when it decided.
-        """
         self.now_ts = order_request.ts
         order_id = self.order_id.next()
         order_tracker = OrderTracker(order_request, order_id, self.now_ts)
@@ -221,12 +157,6 @@ class SimulatorGateway(ExchangeGateway):
 
 
 class _OrderBookSink:
-    """Adapts the gateway to the `EventQueue` shape a `MarketDataFeed` publishes to.
-
-    Only the paper-trading path needs it: a live feed pushes `(event_type, book)`
-    tuples at a queue, and the simulator wants the book.
-    """
-
     def __init__(self, gateway: "SimulatorGateway"):
         self._gateway = gateway
 

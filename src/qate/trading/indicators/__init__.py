@@ -1,10 +1,3 @@
-"""
-Standard technical indicators for trading strategies.
-
-All indicators inherit from qate.trading.indicator.Indicator and implement
-the compute(bars: deque[Bar]) -> float | dict | None method.
-"""
-
 from .atr import ATR
 from .ema import EMA
 from .macd import MACD

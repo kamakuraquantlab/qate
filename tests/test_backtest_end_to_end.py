@@ -1,21 +1,3 @@
-"""A whole backtest, through the public package only.
-
-Order books in, replayed through the simulator, a metric log on disk. This is the
-path the library exists to support, and it is worth one test that walks all of it
-rather than several that each mock the next piece.
-
-It stops at the metric log, because that is where `qate` stops. Turning a run into
-parquet results is the backtester's job and is tested there.
-
-The books are built in memory rather than read from a file. `qate` does not know
-any storage layout -- reading recorded data belongs to whoever owns it -- so a
-test that needed parquet would be testing a dependency this package does not
-have. Events in, events out.
-
-Nothing here installs an exchange adapter, and the second test proves the backtest
-path never even asks for one.
-"""
-
 from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, Measurement, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
@@ -33,7 +15,6 @@ START_TS = DtRange.from_strings("20260115", "20260115").start_ts
 
 
 def make_books(prices: list[float]) -> list[tuple[str, OrderBook]]:
-    """One book per price, a fixed 1000-wide spread, 1.0 resting at each level."""
     events = []
     for n, mid in enumerate(prices):
         bids = [OrderLevel(mid - 500 - i * 100, 1.0) for i in range(DEPTH)]
@@ -48,12 +29,6 @@ def make_books(prices: list[float]) -> list[tuple[str, OrderBook]]:
 
 
 class BuyThenSell(Strategy):
-    """Buys on the first book it handles, sells once that buy has filled.
-
-    Deliberately minimal: what is being tested is that the wiring carries an
-    order from a strategy to a fill and back, not a trading idea.
-    """
-
     ORDER_SIZE = 0.01
 
     def __init__(self):
@@ -189,10 +164,10 @@ def test_cancelling_an_already_filled_order_is_not_a_fault():
     )
     gateway.create(request)
     book = make_books([MIDS[0]])[0][1]
-    gateway.handle_order_book(book)          # fills, and forgets the order
+    gateway.handle_order_book(book)  # fills, and forgets the order
     assert request.ctx_id not in gateway.orders
 
-    gateway.cancel(request)                  # the race: must not raise
+    gateway.cancel(request)  # the race: must not raise
     assert not [e for e in errors if e[0] == EventType.ORDER_ERROR]
 
 

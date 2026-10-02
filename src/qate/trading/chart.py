@@ -1,31 +1,3 @@
-"""Bars, the builders that form them, and the chart that carries indicators.
-
-A bar is a summary of a run of trades. What varies is two independent questions,
-and keeping them independent is the whole design of this module:
-
-- **When does a bar end?** After a period, a tick count, a traded volume, or a
-  price range. That is a `_Closer`.
-- **What is the bar, once it ends?** Plain OHLC, or Heikin-Ashi. That is a
-  `_Creator`.
-
-`BaseBarBuilder` composes one of each, so the builders below are four closers
-times two creators rather than a class per combination.
-
-## Why this was two modules
-
-It used to be `chart.py` and `chart2.py`. The first built bars by inheritance:
-`HeikinAshiBarBuilder` subclassed `CandleBarBuilder` and overrode how the bar was
-made. That works until you want Heikin-Ashi bars closed by price range instead of
-by period -- an entirely reasonable combination that the hierarchy simply could not
-express, because the closing rule and the bar shape were the same axis.
-
-`chart2.py` was the rewrite that separated them, and it gained
-`HeikinAshiRangeBarBuilder` for free. Both modules then existed side by side with
-five of six builders duplicated between them. This is the composition version, with
-everything that was only in the older module -- `Bar`, `BarChart`, `DataFrameChart`
--- kept.
-"""
-
 import json
 from abc import ABC, abstractmethod
 from collections import deque
@@ -92,13 +64,8 @@ class Bar(TimeSeriesData):
         }
 
 
-# ---------------------------------------------------------------- bar building
-
-
 @dataclass
 class _State:
-    """The trades accumulated since the last bar closed, and their running totals."""
-
     data_list: list[Trade] = field(default_factory=list)
     high = 0.0
     low = MAX_FLOAT
@@ -106,16 +73,12 @@ class _State:
 
 
 class _Closer(ABC):
-    """Decides when the bar being accumulated has ended."""
-
     @abstractmethod
     def should_close(self, state: _State, trade: Trade) -> bool:
         pass
 
 
 class _Creator(ABC):
-    """Turns accumulated state into a bar."""
-
     @abstractmethod
     def create_bar(self, state: _State) -> Bar:
         pass
@@ -172,12 +135,6 @@ class CandleCreator(_Creator):
 
 
 class HeikinAshiCreator(_Creator):
-    """Averaged bars: each one opens at the midpoint of the previous one.
-
-    Carries state between bars, which is why it is an object rather than a
-    function: `_open` is the running average that makes the series smooth.
-    """
-
     def __init__(self, prev_bar: Bar = None):
         self._open = None if not prev_bar else (prev_bar.open + prev_bar.close) / 2.0
 
@@ -207,13 +164,6 @@ class HeikinAshiCreator(_Creator):
 
 
 class BaseBarBuilder:
-    """Accumulates trades and emits a bar whenever the closer says one has ended.
-
-    `on_update` returns the completed bar, or None. Note the order: the closing
-    check runs against the state *before* the incoming trade is added, so a trade
-    that ends a bar belongs to the next one.
-    """
-
     def __init__(self, closer: _Closer, creator: _Creator):
         self.closer = closer
         self.creator = creator
@@ -257,8 +207,6 @@ class BaseBarBuilder:
 
 
 class _RangeSized:
-    """Box size handling, shared by the two range-closed builders."""
-
     def set_box_size(self, box_size_rate: float) -> None:
         self.closer = RangeCloser(box_size_rate)
 
@@ -305,9 +253,6 @@ class HeikinAshiRangeBarBuilder(_RangeSized, BaseBarBuilder):
 
     def __init__(self, box_size_rate: float, prev_bar: Bar = None):
         super().__init__(RangeCloser(box_size_rate), HeikinAshiCreator(prev_bar))
-
-
-# ----------------------------------------------------------------------- charts
 
 
 def _flatten_dict(data: dict) -> list:
@@ -374,18 +319,6 @@ class BarChart:
 
 
 class DataFrameChart:
-    """Chart for indicators that want a DataFrame rather than a deque of bars.
-
-    The whole frame is rebuilt on every bar, which is O(max_len) each time. That is
-    deliberate: `max_len` is normally 5 to 120 rows, bars arrive seconds or minutes
-    apart, and an immutable frame has no incremental-index state to get wrong. At
-    120 rows a rebuild is around 0.1ms, so 1-second bars cost roughly 0.01% of a
-    core.
-
-    It stops being acceptable somewhere above a thousand bars or with sub-second
-    bars in a busy market; `BarChart` is the one to use then.
-    """
-
     def __init__(self, max_len=120, prefix=""):
         self.max_len = max_len
         self.prefix = prefix + "_" if prefix else ""

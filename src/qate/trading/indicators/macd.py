@@ -7,13 +7,6 @@ from .ema import EMA
 
 
 class MACD(Indicator):
-    """
-    Moving Average Convergence Divergence
-
-    Trend-following momentum indicator that shows the relationship between two
-    moving averages. Returns a dict with 'macd', 'signal', and 'histogram' values.
-    """
-
     def __init__(
         self,
         fast_period: int = 12,
@@ -21,15 +14,6 @@ class MACD(Indicator):
         signal_period: int = 9,
         field: str = "close",
     ):
-        """
-        Initialize MACD indicator.
-
-        Args:
-            fast_period: Period for fast EMA (default: 12)
-            slow_period: Period for slow EMA (default: 26)
-            signal_period: Period for signal line EMA (default: 9)
-            field: Bar field to use (default: "close")
-        """
         self.fast_ema = EMA(fast_period, field)
         self.slow_ema = EMA(slow_period, field)
         self.signal_ema = EMA(signal_period, field)

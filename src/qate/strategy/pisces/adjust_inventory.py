@@ -77,10 +77,7 @@ def plan_allocation(
     total_value = {ex: xrp_value[ex] + jpy[ex] for ex in exchanges}
 
     # Step 1: Can-start check
-    if (
-        total_value[ex_a] < allocated_value_jpy
-        or total_value[ex_b] < allocated_value_jpy
-    ):
+    if total_value[ex_a] < allocated_value_jpy or total_value[ex_b] < allocated_value_jpy:
         _log_insufficient(balances, jpy, xrp_value, total_value, allocated_value_jpy, _keep, symbol)
         fallback = {ex: Allocation(quote=half_n, base=half_n / prices[ex]) for ex in exchanges}
         return AllocationPlan(allocations=fallback, case=RebalanceCase.INSUFFICIENT)
@@ -194,7 +191,7 @@ def _log_insufficient(balances, jpy, xrp_value, total_value, allocated_value_jpy
 
 class MultiRebalanceCase(Enum):
     OK = "ok"
-    REBALANCE = "rebalance"        # steps written to rebalance.jsonl; run corvus then restart
+    REBALANCE = "rebalance"  # steps written to rebalance.jsonl; run corvus then restart
     INSUFFICIENT = "insufficient"  # total value too low; manual transfer needed
 
 
@@ -250,12 +247,18 @@ def plan_multi_allocation(
 
 def write_rebalance_file(steps: list[RebalanceStep], path: str = "rebalance.jsonl"):
     with open(path, "w") as f:
-        f.writelines(json.dumps({
-                "exchange": step.exchange.name,
-                "symbol": step.symbol.name,
-                "side": step.side.name,
-                "amount": round(step.amount, 8),
-            }) + "\n" for step in steps)
+        f.writelines(
+            json.dumps(
+                {
+                    "exchange": step.exchange.name,
+                    "symbol": step.symbol.name,
+                    "side": step.side.name,
+                    "amount": round(step.amount, 8),
+                }
+            )
+            + "\n"
+            for step in steps
+        )
     LOG.error(f"Rebalance steps written to {path} — review it, then execute it with corvus")
 
 
@@ -270,8 +273,7 @@ def _log_multi_rebalance(steps, prices):
     for step in steps:
         jpy = step.amount * prices[step.exchange][step.symbol]
         LOG.warning(
-            f"REBALANCE {step.exchange.name} {step.symbol.name}"
-            f" {step.side.name} {step.amount:.6f} (~{jpy:.0f} JPY)"
+            f"REBALANCE {step.exchange.name} {step.symbol.name} {step.side.name} {step.amount:.6f} (~{jpy:.0f} JPY)"
         )
     LOG.warning("Review rebalance.jsonl, then execute it with corvus")
 
@@ -359,7 +361,7 @@ if __name__ == "__main__":
         print(f"\n{label}")
         for ex, bal in balances.items():
             total = bal["base"] * prices[ex] + bal["quote"]
-            line = f"  {ex.name:8s}  XRP={bal['base']:7.1f}" f"  JPY={bal['quote']:>12,.0f}" f"  total≈{total:>12,.0f}"
+            line = f"  {ex.name:8s}  XRP={bal['base']:7.1f}  JPY={bal['quote']:>12,.0f}  total≈{total:>12,.0f}"
             if allocations and ex in allocations:
                 a = allocations[ex]
                 line += f"   →  alloc XRP={a.base:6.1f}  JPY={a.quote:>10,.0f}"
@@ -375,7 +377,7 @@ if __name__ == "__main__":
         min_jpy_to_keep: dict[str, float] | None = None,
     ) -> bool:
         """Returns False when no further trading is possible."""
-        print(f"\n{'─'*64}")
+        print(f"\n{'─' * 64}")
         print(f"SESSION {session}  (restart — fetching balances from exchange APIs)")
 
         _keep = min_jpy_to_keep or {}
@@ -486,7 +488,7 @@ if __name__ == "__main__":
             btc_val = b[BTC] * px[BTC]
             print(
                 f"  {ex.name:8s}  XRP={b[XRP]:7.1f}  BTC={b[BTC]:.4f}"
-                f"  JPY={b['jpy']:>12,.0f}  total≈{xrp_val+btc_val+b['jpy']:>12,.0f}"
+                f"  JPY={b['jpy']:>12,.0f}  total≈{xrp_val + btc_val + b['jpy']:>12,.0f}"
             )
             if maker_allocs and ex == BITBANK:
                 for sym, a in maker_allocs.items():
@@ -498,7 +500,7 @@ if __name__ == "__main__":
     _show_multi("Initial state:", multi_balances)
 
     for session in range(1, 5):
-        print(f"\n{'─'*64}")
+        print(f"\n{'─' * 64}")
         print(f"SESSION {session}  (restart)")
 
         maker_jpy = multi_balances[BITBANK]["jpy"]

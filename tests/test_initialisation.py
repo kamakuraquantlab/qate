@@ -1,19 +1,3 @@
-"""Every class initialises each of its bases exactly once, and ends up whole.
-
-`qate.core.feed`'s mixins do not chain, because they are mixed in beside
-`threading.Thread`, which is not cooperative. The cost of that choice is that a
-class combining them has to initialise each by name, and forgetting one gives an
-`AttributeError` the first time something publishes -- not at construction. This
-file is what makes that a test failure instead.
-
-It also catches the opposite mistake, which is the one that was actually there:
-`QueuedGateway` initialised `EventLoop`, `StatusFeed` and `Thread` twice per
-gateway, because its second explicit base call entered a mixin whose cooperative
-`super()` continued along the instance's MRO and arrived back at `EventLoop`. A
-queue was built and discarded and the handler table was cleared and refilled on
-every construction.
-"""
-
 import collections
 import threading
 
@@ -52,7 +36,6 @@ class FakeApi(Api):
 
 @pytest.fixture
 def init_counts(monkeypatch):
-    """Count `__init__` calls per instance, for every base that has state."""
     counts: dict[int, list[str]] = collections.defaultdict(list)
     alive: list = []  # hold references, or a freed object's id gets reused
 
@@ -104,7 +87,6 @@ def test_every_mixin_it_uses_is_initialised(label, make, mixins, tmp_path, monke
 
 
 def test_a_thread_backed_class_is_startable(tmp_path, monkeypatch):
-    """Thread.__init__ ran, and only once, so the thread object is sound."""
     monkeypatch.chdir(tmp_path)
     gateway = DefaultGateway(FakeApi())
     assert gateway.name  # Thread.__init__ assigns one
@@ -119,7 +101,6 @@ def test_a_thread_backed_class_is_startable(tmp_path, monkeypatch):
 
 
 def test_a_gateway_builds_one_event_queue(tmp_path, monkeypatch):
-    """The double init built a queue, threw it away and built another."""
     monkeypatch.chdir(tmp_path)
     built = []
     original = ev_loop.create_event_queue
@@ -137,9 +118,8 @@ def test_a_gateway_builds_one_event_queue(tmp_path, monkeypatch):
 
 
 def test_a_gateway_keeps_the_handlers_registered_during_construction(tmp_path, monkeypatch):
-    """The second init cleared `handlers`; anything registered before it was lost."""
     monkeypatch.chdir(tmp_path)
-    from qate.core.gateway import EVENT_CANCEL_ORDER, EVENT_CREATE_ORDER
+    from qate.trading.gateways.queued import EVENT_CANCEL_ORDER, EVENT_CREATE_ORDER
 
     gateway = DefaultGateway(FakeApi())
     assert EVENT_CREATE_ORDER in gateway.handlers

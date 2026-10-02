@@ -18,19 +18,6 @@ LOG = getLogger(__name__)
 
 
 class Runtime(EventLoop):
-    """Everything a run needs except the trading itself.
-
-    `Trader` decides; this owns the process around it -- the connections, the
-    gateways, the metric log, the reporters -- and the event loop they all publish
-    into. The division is what lets a backtest skip this class entirely: Enoshima
-    drives a `Trader` with a `ReplayQueue` and never needs a live loop.
-
-    It was called `Bootstrap` and lived in a `qate.boot` package that also held the
-    environment directory, the credential lookup and the config loader. Those are a
-    deployment's concerns rather than a library's and are now `qate-env`; what was
-    left is this, which is `qate.trading`'s all along.
-    """
-
     def __init__(self, strategy: Strategy):
         super().__init__(None, heartbeat_interval=5)
         self.trader = Trader(strategy)
@@ -65,24 +52,10 @@ class Runtime(EventLoop):
         self.trader.add_gateway(gateway)
 
     def add_reporter(self, reporter: Reporter):
-        """Add a destination for this run's outcomes. Like `add_conn` for feeds.
-
-        Several are fine and each sees everything; a reporter that only cares about
-        one kind of outcome overrides one hook and ignores the rest.
-        """
         self.reporters.append(reporter)
-        # A reporter may also be a source -- a chat bot taking commands -- so its
-        # inbound messages reach the strategy the same way any other event does.
         reporter.add_status_listener(self.event_queue)
 
     def _report(self, call, *args):
-        """Call one hook on every reporter, and let none of them stop the run.
-
-        A reporter is an observer. A broken webhook or a closed socket must not take
-        a live strategy down with it, so this logs and continues -- which is the
-        opposite of the fail-fast rule everywhere else, and deliberately so: there
-        is nothing about a trading decision that depends on anyone being told.
-        """
         for reporter in self.reporters:
             try:
                 getattr(reporter, call)(*args)

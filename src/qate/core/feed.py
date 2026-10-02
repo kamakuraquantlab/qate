@@ -1,28 +1,3 @@
-"""Observer mixins: who is listening for what.
-
-Four sets of listener lists, mixed into the classes that publish. A gateway is an
-`OrderFeed`, a websocket connection is a `MarketDataFeed`, anything that reports its
-own health is a `StatusFeed`.
-
-## Each one initialises only its own state
-
-No `super().__init__()` here, deliberately, and a class that mixes one in must call
-its `__init__` explicitly.
-
-These are mixed in beside `threading.Thread`, which does not play the cooperative
-game: it takes its own arguments and is initialised by name. So a chain of
-`super().__init__()` through the mixins had to be *entered* by an explicit
-`EventLoop.__init__(self, queue, heartbeat)` call -- and any second explicit call in
-the same constructor re-entered the whole chain from wherever it landed in the MRO.
-`QueuedGateway` did exactly that, and initialised `EventLoop`, `StatusFeed` and
-`Thread` twice per gateway: a queue built and discarded, a handler table cleared
-and refilled, a Thread's internals re-established.
-
-Explicit initialisation is longer to write and says what happens. The cost is that
-a class combining mixins must remember them all, which
-`tests/test_initialisation.py` checks for every class in the library.
-"""
-
 from .ev_q import EventQueue
 from .ev_type import EventType
 from .model import OrderBook, Symbol, Trade

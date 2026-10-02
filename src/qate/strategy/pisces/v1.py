@@ -157,15 +157,18 @@ class Variant(Strategy[Config]):
 
         path = "rebalance.jsonl"
         with open(path, "w") as f:
-            f.writelines(json.dumps(
-                        {
-                            "exchange": step.exchange.name,
-                            "symbol": step.symbol.name,
-                            "side": step.side.name,
-                            "amount": round(step.amount, 8),
-                        }
-                    )
-                    + "\n" for step in plan.steps)
+            f.writelines(
+                json.dumps(
+                    {
+                        "exchange": step.exchange.name,
+                        "symbol": step.symbol.name,
+                        "side": step.side.name,
+                        "amount": round(step.amount, 8),
+                    }
+                )
+                + "\n"
+                for step in plan.steps
+            )
         action = "BUY" if plan.case == RebalanceCase.BUY_BASE else "SELL"
         LOG.error(
             f"Inventory imbalance for {symbol.name}: need to {action} base before trading."

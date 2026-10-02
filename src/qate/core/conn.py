@@ -1,18 +1,3 @@
-"""Connection interfaces an exchange adapter implements.
-
-These are declarations, not implementations. `qate` describes the shape of a
-market-data feed and an account feed so that the rest of the library -- the
-gateway, the boot configurator, a strategy -- can be written against a venue it
-never names. The transport itself (a WebSocket client, reconnect policy, an
-order-book diff tracker) belongs to whichever adapter package supplies the
-venue, and lives there.
-
-The split is deliberate and is what makes this package safe to publish: a
-`qate` install carries no venue endpoint and no WebSocket client, so there is
-nothing here that can be pointed at a live exchange. A replayed feed is the
-only one this package can produce on its own.
-"""
-
 from abc import ABC, abstractmethod
 
 from .feed import ExchangeFeed, MarketDataFeed, StatusFeed
@@ -20,12 +5,7 @@ from .model import ExchangeName
 
 
 class Connection(StatusFeed, ABC):
-    """A long-lived connection to a venue, started and stopped by the runtime.
-
-    An implementation is expected to reconnect on its own and to publish
-    `EventType.CONN_*` through `StatusFeed`; nothing above this interface
-    retries on its behalf.
-    """
+    """A long-lived connection to a venue, started and stopped by the runtime."""
 
     @property
     @abstractmethod

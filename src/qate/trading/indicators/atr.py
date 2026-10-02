@@ -5,23 +5,7 @@ from qate.trading.indicator import Indicator
 
 
 class ATR(Indicator):
-    """
-    Average True Range
-
-    Measures market volatility by calculating the average of true ranges over a period.
-    True Range is the greatest of:
-    - Current high - current low
-    - Absolute value of current high - previous close
-    - Absolute value of current low - previous close
-    """
-
     def __init__(self, period: int):
-        """
-        Initialize ATR indicator.
-
-        Args:
-            period: Number of bars to average true range
-        """
         self.period = period
 
     def compute(self, bars: deque[Bar]) -> float | None:

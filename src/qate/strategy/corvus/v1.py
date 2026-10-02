@@ -62,8 +62,7 @@ class Variant(Strategy[Config]):
 
         mid = order_book.market.id
         in_flight = any(
-            not p.filled and p.is_placed()
-            and Market(p.instruction.exchange, p.instruction.symbol).id == mid
+            not p.filled and p.is_placed() and Market(p.instruction.exchange, p.instruction.symbol).id == mid
             for p in self.pending
         )
         for p in self.pending:
@@ -90,15 +89,13 @@ class Variant(Strategy[Config]):
     def _place(self, p: PendingOrder, price: float):
         instr = p.instruction
         market = Market(instr.exchange, instr.symbol)
-        request = OrderRequest(
-            self.now_ts, market, instr.side, price, instr.amount, SettleType.OPEN, OrderType.MAKER
-        )
+        request = OrderRequest(self.now_ts, market, instr.side, price, instr.amount, SettleType.OPEN, OrderType.MAKER)
         self.gateways[instr.exchange].create(request)
         p.ctx_id = request.ctx_id
         p.placed_at = self.now_ts
         p.placed_price = price
         LOG.info(
-            f"CORVUS PLACE {instr.side.name} {instr.amount} {instr.symbol.name}" f" @ {price} on {instr.exchange.name}"
+            f"CORVUS PLACE {instr.side.name} {instr.amount} {instr.symbol.name} @ {price} on {instr.exchange.name}"
         )
 
     def _cancel(self, p: PendingOrder):

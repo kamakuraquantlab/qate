@@ -5,22 +5,7 @@ from qate.trading.indicator import Indicator
 
 
 class RSI(Indicator):
-    """
-    Relative Strength Index
-
-    Measures momentum by comparing the magnitude of recent gains to recent losses.
-    Returns a value between 0 and 100, where values above 70 indicate overbought
-    conditions and values below 30 indicate oversold conditions.
-    """
-
     def __init__(self, period: int = 14, field: str = "close"):
-        """
-        Initialize RSI indicator.
-
-        Args:
-            period: Number of bars for RSI calculation (default: 14)
-            field: Bar field to use (default: "close")
-        """
         self.period = period
         self.field = field
         self.avg_gain = None
@@ -39,7 +24,7 @@ class RSI(Indicator):
 
         # Initialize with simple average on first calculation
         if self.avg_gain is None:
-            bars_list = list(bars)[-(self.period + 1):]
+            bars_list = list(bars)[-(self.period + 1) :]
             gains = []
             losses = []
 

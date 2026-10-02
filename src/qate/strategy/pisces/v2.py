@@ -94,8 +94,6 @@ class Variant(Strategy[Config]):
         else:
             self.taker_gateway = gateway
 
-    # ── startup ───────────────────────────────────────────────────────────────
-
     def _pair_config(self, symbol: Symbol) -> PairConfig | None:
         for pc in self.config.pairs:
             if pc.symbol == symbol:
@@ -118,8 +116,14 @@ class Variant(Strategy[Config]):
         maker_base = {pc.symbol: self.maker_gateway.fetch_balance_sync(pc.symbol)["base"] for pc in self.config.pairs}
         taker_base = {pc.symbol: self.taker_gateway.fetch_balance_sync(pc.symbol)["base"] for pc in self.config.pairs}
 
-        maker_prices = {pc.symbol: self._warmup_books[Market(self.config.maker_exchange, pc.symbol).id][1].mid for pc in self.config.pairs}
-        taker_prices = {pc.symbol: self._warmup_books[Market(self.config.taker_exchange, pc.symbol).id][1].mid for pc in self.config.pairs}
+        maker_prices = {
+            pc.symbol: self._warmup_books[Market(self.config.maker_exchange, pc.symbol).id][1].mid
+            for pc in self.config.pairs
+        }
+        taker_prices = {
+            pc.symbol: self._warmup_books[Market(self.config.taker_exchange, pc.symbol).id][1].mid
+            for pc in self.config.pairs
+        }
 
         plan = plan_multi_allocation(
             pairs=self.config.pairs,
@@ -156,13 +160,17 @@ class Variant(Strategy[Config]):
             max_drawdown = pc.allocated_value_jpy * 0.3
             pnl_tracker = PnlTracker()
 
-            maker_inv = SpotInventory(maker_market, maker_allocs[sym].quote, maker_allocs[sym].base, max_drawdown, pnl_tracker)
+            maker_inv = SpotInventory(
+                maker_market, maker_allocs[sym].quote, maker_allocs[sym].base, max_drawdown, pnl_tracker
+            )
             maker_src = MakerSource(maker_market, pc.order_size, maker_inv)
             maker_src.gateway = self.maker_gateway
             maker_src.order_book = maker_ob
             maker_src.market_price = maker_mp
 
-            taker_inv = SpotInventory(taker_market, taker_allocs[sym].quote, taker_allocs[sym].base, max_drawdown, pnl_tracker)
+            taker_inv = SpotInventory(
+                taker_market, taker_allocs[sym].quote, taker_allocs[sym].base, max_drawdown, pnl_tracker
+            )
             taker_src = TakerSpotSource(taker_market, taker_inv)
             taker_src.gateway = self.taker_gateway
             taker_src.order_book = taker_ob
@@ -190,8 +198,6 @@ class Variant(Strategy[Config]):
         if self._all_books_ready():
             self._init_from_balances()
             self._is_ready = True
-
-    # ── per-pair trading logic ────────────────────────────────────────────────
 
     def _run_pair_tasks(self, pair: PairState):
         if self.now_ts - pair.last_task_ts < 900:
@@ -277,8 +283,6 @@ class Variant(Strategy[Config]):
                 )
                 entry.cancel_requested = True
                 pair.maker.cancel(entry.response)
-
-    # ── event handlers ────────────────────────────────────────────────────────
 
     def check_stop_requested(self):
         if not self.stop_requested:

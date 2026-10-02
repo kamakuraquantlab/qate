@@ -1,13 +1,3 @@
-"""Accumulate, then write in batches.
-
-A writer that flushes on a count rather than per item. Used by anything whose
-destination is cheaper in batches than per record -- a local file, a database
-write api -- so the caller never thinks about batching.
-
-Subclasses implement `write`, which receives the whole buffer and is free to block;
-`add` is the hot path and must not.
-"""
-
 from abc import ABC, abstractmethod
 
 

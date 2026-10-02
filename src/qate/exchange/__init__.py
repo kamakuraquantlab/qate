@@ -1,9 +1,3 @@
-"""Exchange resolution: the adapter contract, the registry, and the factory.
-
-No venue implementation lives in this package. See `registry` for how one is
-supplied and why it is kept outside.
-"""
-
 from .factory import (
     available_exchanges,
     create_exchange_api,

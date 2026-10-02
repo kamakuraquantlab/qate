@@ -114,9 +114,7 @@ def test_corvus_config_declares_its_markets_once_each(tmp_path):
 
 def test_corvus_constructs_and_starts_unready(tmp_path):
     """It is ready only once a book has arrived for every market it must trade."""
-    config = corvus_config(
-        tmp_path, [{"exchange": "GMO", "symbol": "XRP_SPOT", "side": "BUY", "amount": 10.0}]
-    )
+    config = corvus_config(tmp_path, [{"exchange": "GMO", "symbol": "XRP_SPOT", "side": "BUY", "amount": 10.0}])
     strategy = get_strategy_class("qate.strategy.corvus", "v1")(config, {})
     assert isinstance(strategy, Strategy)
     assert strategy.is_ready is False

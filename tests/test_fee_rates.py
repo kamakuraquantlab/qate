@@ -41,9 +41,7 @@ def adapters(monkeypatch):
         registry,
         "_ADAPTERS",
         {
-            ExchangeName.BITBANK: registry.ExchangeAdapter(
-                exchange_name=ExchangeName.BITBANK, fee_rates=BITBANK_FEES
-            ),
+            ExchangeName.BITBANK: registry.ExchangeAdapter(exchange_name=ExchangeName.BITBANK, fee_rates=BITBANK_FEES),
             ExchangeName.GMO: registry.ExchangeAdapter(exchange_name=ExchangeName.GMO, fee_rates=GMO_FEES),
         },
     )
