@@ -1,8 +1,12 @@
-"""Fees: the registry, the sign convention, and what an empty registry costs.
+"""Fees: the registry, discovery, the sign convention, and what an empty one costs.
 
-`qate` holds no rate of its own, so the thing worth testing is the mechanism and the
-one behaviour a reader could get wrong about it — an unregistered market is free, and
-says so. These tests own the global registry, so each one clears it.
+`qate` holds no rate of its own, so what is worth testing is the mechanism and the two
+things a reader could get wrong about it — an unregistered market is free and says so,
+and rates arrive from an installed plugin without anyone importing it.
+
+These tests own the global registry. The fixture empties it *and* marks discovery as
+done, because on a developer's machine a fee plugin usually is installed and would
+otherwise fill the registry in behind the test.
 """
 
 import logging
@@ -26,10 +30,11 @@ TAKER = OrderType.DEFAULT
 
 
 @pytest.fixture(autouse=True)
-def empty_registry():
-    fee.clear()
-    yield
-    fee.clear()
+def empty_registry(monkeypatch):
+    monkeypatch.setattr(fee, "_SCHEDULES", {})
+    monkeypatch.setattr(fee, "_WARNED", set())
+    monkeypatch.setattr(fee, "_discovered", True)
+    monkeypatch.delenv(fee.PLUGIN_ENV_VAR, raising=False)
 
 
 def test_a_rate_registered_is_a_rate_charged():
@@ -90,11 +95,11 @@ def test_a_second_registration_replaces_the_first():
 
 
 def test_registering_late_still_reaches_a_tracker_already_built():
-    """The ordering a live runner actually has: strategy first, adapters after.
+    """A `PnlTracker` built before any rate exists still charges the rate.
 
-    `PnlTracker` is constructed with the strategy, which happens before the gateways
-    that cause an adapter package to be imported. A `FeeCalculator` that snapshotted
-    the registry in `__init__` would charge nothing for the whole run.
+    It is constructed with its strategy, before anything has asked for a fee and so
+    before discovery has run. A `FeeCalculator` that snapshotted the registry in
+    `__init__` would charge nothing for the whole run.
     """
     tracker = PnlTracker()
     fee.register_rates(ExchangeName.GMO, Symbol.BTC_SPOT, maker=0.0, taker=0.001)
@@ -126,3 +131,54 @@ def fill(side: Side, settle_type: SettleType, size: float, price: float) -> Orde
         exec_price=price,
         completed_ts=TS + 1,
     )
+
+
+# ------------------------------------------------------------------- discovery
+
+
+def test_an_installed_plugin_is_found_without_anyone_importing_it(monkeypatch):
+    """What makes rates reach a replay: nothing imports the package supplying them."""
+    import fake_fee_plugin
+
+    monkeypatch.setenv(fee.PLUGIN_ENV_VAR, "fake_fee_plugin")
+    monkeypatch.setattr(fee, "_discovered", False)
+
+    schedule = fee.get(Market(ExchangeName.HUOBI, Symbol.BTC_USDT))
+
+    assert schedule is not None
+    assert schedule.taker == fake_fee_plugin.TAKER
+
+
+def test_discovery_happens_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(fee, "_discovered", False)
+    monkeypatch.setattr(fee, "load_plugins", lambda *a, **k: calls.append(1))
+
+    fee.get(MARKET)
+    fee.get(MARKET)
+    fee.registered_markets()
+
+    assert len(calls) == 1
+
+
+def test_a_broken_plugin_does_not_break_discovery(monkeypatch):
+    monkeypatch.setenv(fee.PLUGIN_ENV_VAR, "no_such_module,fake_fee_plugin")
+    monkeypatch.setattr(fee, "_discovered", False)
+
+    assert fee.get(Market(ExchangeName.HUOBI, Symbol.BTC_USDT)) is not None
+
+
+def test_an_explicit_registration_wins_over_a_plugins(monkeypatch):
+    """A caller's own rate must not be overwritten by a plugin discovered later.
+
+    `register` discovers first for this reason. Without it the override would be
+    written, then the first lookup would load the plugin on top of it and the caller's
+    rate would vanish with nothing said.
+    """
+    huobi = Market(ExchangeName.HUOBI, Symbol.BTC_USDT)
+    monkeypatch.setenv(fee.PLUGIN_ENV_VAR, "fake_fee_plugin")
+    monkeypatch.setattr(fee, "_discovered", False)
+
+    fee.register(huobi, fee.FeeSchedule(maker=0.0, taker=0.004))
+
+    assert fee.get(huobi).taker == 0.004

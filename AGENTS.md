@@ -156,13 +156,20 @@ abstract base class cannot give.
   forwarding setter that assignment would land on an unused attribute and the box
   size would silently never change. `set_box_size` is the supported way.
 - **`qate` holds no fee rate, and an unregistered market is free.**
-  `qate.trading.fee` is a registry plus the arithmetic; `qate-exchanges` registers
-  the venues it adapts, at import. `FeeCalculator` reads the registry per fill
-  rather than snapshotting it, because a `PnlTracker` is built with its strategy —
-  before the gateways whose construction loads the adapter package. The cost of the
-  split is real and is the first thing to suspect in a suspiciously profitable
-  backtest: a process that registers nothing costs every fill at zero. It warns once
-  per market, and `fee.registered_markets()` is there to assert on.
+  `qate.trading.fee` is a registry plus the arithmetic; rates arrive from a
+  `qate.fees` entry point, which `qate-exchanges` declares. `FeeCalculator` reads the
+  registry per fill rather than snapshotting it, which is what lets discovery be lazy:
+  a `PnlTracker` is built with its strategy, before anything has asked for a fee.
+  The cost of the split is real and is the first thing to suspect in a suspiciously
+  profitable backtest: a process with no fee plugin installed costs every fill at
+  zero. It warns once per market, and `fee.registered_markets()` is there to assert on.
+- **`qate.fees` is a different group from `qate.exchanges`, and must stay one.** A
+  replay has to know what a fill costs and must still never ask for a venue. Keeping
+  fees out of the adapter group is what lets a rate be found without
+  `qate.exchange.registry` being consulted, and so what keeps
+  `test_backtest_end_to_end.py::test_a_backtest_never_asks_for_an_exchange` meaningful.
+  Both groups go through `qate.util.plugins`, which is the only place the lazy
+  entry-point behaviour is written down.
 - **A reporter is the one place that swallows exceptions.** `Runtime._report`
   logs and continues, because nothing about a trading decision depends on anyone
   being told and an unreachable webhook must not take a live strategy down. That is

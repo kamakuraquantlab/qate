@@ -196,7 +196,12 @@ load an adapter from a checkout that is not installed.
 ### What a fill costs
 
 An adapter package also knows what its venues charge, so `qate` ships the registry
-and no rates:
+and no rates. They arrive the same way an adapter does, through an entry point:
+
+```toml
+[project.entry-points."qate.fees"]
+my_venues = "my_venues.fees:register_fees"
+```
 
 ```python
 from qate.trading import fee
@@ -205,12 +210,21 @@ fee.register_rates(ExchangeName.GMO, Symbol.BTC_SPOT, maker=-0.0001, taker=0.000
 ```
 
 Fractions of notional, and **a negative maker rate is a rebate** — the fee comes
-back negative and a `PnlUpdate` that subtracts it is correct. `PnlTracker` reads the
-registry on every fill, so registering late still works.
+back negative and a `PnlUpdate` that subtracts it is correct.
+
+Discovery is lazy and happens on the first fee lookup, so an installed package is
+enough: nothing has to import it and nothing has to happen in the right order.
+`PnlTracker` reads the registry per fill for that reason. A registration made by hand
+wins over a plugin's, whenever it is made.
+
+The group is separate from `qate.exchanges` on purpose. A replay has to know what a
+fill costs and must still never ask for a venue, so a fee entry point should name a
+module that holds rates and nothing that can open a socket — resolving a fee then
+leaves `qate.exchange.registry` untouched.
 
 A market nobody registered is costed at **zero**, with one warning per market: a
 venue whose fees a run does not know is a configuration gap, not a reason to kill a
-live strategy mid-position. It does mean a backtest that registers nothing reports
+live strategy mid-position. It does mean a run with no fee plugin installed reports
 no fees at all, which flatters any strategy whose edge is thinner than its costs —
 rates were hardcoded here once, and the price of their being right is that something
 has to supply them. `fee.registered_markets()` is there to assert on first.

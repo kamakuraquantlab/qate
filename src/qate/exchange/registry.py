@@ -33,11 +33,8 @@ private connection raises, naming the venue and the hook. Missing capability is
 reported where it is requested, not guessed at.
 """
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from importlib import import_module
-from importlib.metadata import entry_points
 from logging import getLogger
 
 from qate.core.api import Api
@@ -45,6 +42,7 @@ from qate.core.conn import PrivateConnection, PublicConnection
 from qate.core.gateway import ExchangeGateway
 from qate.core.model import ExchangeName
 from qate.core.order_api import OrderApi
+from qate.util.plugins import load_plugins
 
 LOG = getLogger(__name__)
 
@@ -111,31 +109,14 @@ def registered() -> list[ExchangeName]:
 
 
 def discover(force: bool = False) -> None:
-    """Load adapter plugins. Idempotent; `force` re-runs it."""
+    """Load adapter plugins. Idempotent; `force` re-runs it.
+
+    One broken plugin must not take out the others, or a backtest that needs no
+    adapter at all. `qate.util.plugins` holds that behaviour, shared with the fee
+    registry, which asks the same question of the same installed packages.
+    """
     global _discovered
     if _discovered and not force:
         return
     _discovered = True
-
-    override = os.environ.get(PLUGIN_ENV_VAR, "").strip()
-    if override:
-        for target in (t.strip() for t in override.split(",") if t.strip()):
-            _load(target, source=PLUGIN_ENV_VAR)
-        return
-
-    for ep in entry_points(group=ENTRY_POINT_GROUP):
-        try:
-            ep.load()()
-        except Exception:
-            # One broken plugin must not take out the others, or a backtest
-            # that needs no adapter at all.
-            LOG.exception(f"Failed to load exchange plugin {ep.name} ({ep.value})")
-
-
-def _load(target: str, source: str) -> None:
-    module_name, _, attr = target.partition(":")
-    try:
-        module = import_module(module_name)
-        getattr(module, attr or "register")()
-    except Exception:
-        LOG.exception(f"Failed to load exchange plugin {target} from {source}")
+    load_plugins(ENTRY_POINT_GROUP, PLUGIN_ENV_VAR, LOG)
