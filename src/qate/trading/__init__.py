@@ -13,6 +13,7 @@ a strategy is actually written against.
 | `indicator`, `indicators/` | The `Indicator` contract, and SMA, EMA, MACD, RSI, ATR |
 | `inventory` | What an account holds, what it may spend, and the drawdown guard |
 | `pnl_tracker` | Turning fills into realized PnL and fees, per position |
+| `fee` | What a fill costs: the schedule registry, and no rate of its own |
 | `gateways/` | The gateway implementations an adapter builds on: blocking, and async |
 | `metrics` | Emitting metrics, and the local append-only log they are recorded in |
 | `param` | `ParamGrid`: the defaults, and the values a sweep walks |

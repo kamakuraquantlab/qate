@@ -3,7 +3,6 @@ from itertools import count
 from logging import getLogger
 
 from qate.core.model import (
-    ExchangeName,
     Field,
     Market,
     Measurement,
@@ -13,8 +12,8 @@ from qate.core.model import (
     Tag,
     TimeSeriesData,
 )
-from qate.core.order import OrderResponse, OrderType
-from qate.core.symbol import Symbol
+from qate.core.order import OrderResponse
+from qate.trading.fee import FeeCalculator
 
 LOG = getLogger(__name__)
 EPSILON = 0.00001
@@ -78,40 +77,6 @@ class PnlUpdate(TimeSeriesData):
         )
 
 
-# Fee configuration: (exchange, symbol, maker_fee, taker_fee)
-# Negative maker_fee = rebate (exchange pays you for providing liquidity).
-# Coincheck charges 0% for both sides; entry is explicit to mark it as intentional.
-FEE_RATES = [
-    (ExchangeName.GMO, Symbol.BTC_SPOT, -0.0001, 0.0005),
-    (ExchangeName.GMO, Symbol.ETH_SPOT, -0.0001, 0.0005),
-    (ExchangeName.GMO, Symbol.XRP_SPOT, -0.0001, 0.0005),
-    (ExchangeName.GMO, Symbol.SOL_JPY, 0.0, 0.0003),
-    (ExchangeName.BITBANK, Symbol.BTC_SPOT, -0.0002, 0.0012),
-    (ExchangeName.BITBANK, Symbol.ETH_SPOT, -0.0002, 0.0012),
-    (ExchangeName.BITBANK, Symbol.XRP_SPOT, -0.0002, 0.0012),
-    (ExchangeName.COINCHECK, Symbol.BTC_SPOT, 0.0, 0.0),
-    (ExchangeName.COINCHECK, Symbol.XRP_SPOT, 0.0, 0.0),
-]
-
-
-class FeeCalculator:
-    def __init__(self):
-        self.fee_rates = {}
-        for exchange_name, symbol, fee_maker, fee_taker in FEE_RATES:
-            self.fee_rates[Market(exchange_name, symbol).id] = (fee_maker, fee_taker)
-
-    def calculate(
-        self, market: Market, notional: float, order_type: OrderType
-    ) -> float:
-        market_id = market.id
-        if market_id not in self.fee_rates:
-            return 0.0
-
-        fee_maker, fee_taker = self.fee_rates[market_id]
-        fee_rate = fee_maker if order_type == OrderType.MAKER else fee_taker
-        return notional * fee_rate
-
-
 class PnlTracker:
     def __init__(self):
         # Long position state
@@ -131,7 +96,9 @@ class PnlTracker:
         # Tracking
         self.last_close_ts = -1.0
 
-        # Fee calculator
+        # Reads the fee registry per fill. `qate` registers no rate itself: an
+        # adapter package supplies the venues it adapts, and an unregistered market
+        # is costed at zero with a warning. See `qate.trading.fee`.
         self.fee_calc = FeeCalculator()
 
         # Open-leg fee deferred until close so CLOSE PnlUpdate carries the full round-trip cost.

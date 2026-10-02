@@ -17,9 +17,11 @@ Concretely, and in order of how easy each is to break by accident:
    one in is the same mistake wearing a hat, and so is a data dependency that
    brings one transitively — which is how `httpx` got in here once, through
    `komachi`.
-2. **No venue endpoint, symbol mapping, or request signing belongs here.**
-   `qate.core.conn` declares what a connection *is*; the implementation is an
-   adapter's.
+2. **No venue endpoint, symbol mapping, request signing or fee rate belongs
+   here.** `qate.core.conn` declares what a connection *is*; the implementation is
+   an adapter's. `qate.trading.fee` declares what a fee *is*; the rates are an
+   adapter's too, and were a hardcoded table here until it became clear a published
+   library cannot keep nine of them current.
 3. **No credential, path or host may be named here at all.** Not "no default" —
    none. Credentials, run directories and machine settings are `qate-env`, so this
    package has nothing that could read a key or fall back to an unauthenticated
@@ -49,6 +51,7 @@ Two tests hold this, and both are worth understanding before changing them:
 | A live-trading dev program | `qate-exchanges/tools/` | `tests/` |
 | A production strategy | its own private repo | here |
 | Anything naming a directory, host or credential | `qate-env` | here |
+| A venue's fee rate | `qate-exchanges/fees.py` | here |
 | A file an environment can contain, or its loader | `qate-env` | here |
 | A third worked example | probably nowhere — two is the point | |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
@@ -152,6 +155,14 @@ abstract base class cannot give.
   assigns it directly. The box size lives on the closer now, so without the
   forwarding setter that assignment would land on an unused attribute and the box
   size would silently never change. `set_box_size` is the supported way.
+- **`qate` holds no fee rate, and an unregistered market is free.**
+  `qate.trading.fee` is a registry plus the arithmetic; `qate-exchanges` registers
+  the venues it adapts, at import. `FeeCalculator` reads the registry per fill
+  rather than snapshotting it, because a `PnlTracker` is built with its strategy —
+  before the gateways whose construction loads the adapter package. The cost of the
+  split is real and is the first thing to suspect in a suspiciously profitable
+  backtest: a process that registers nothing costs every fill at zero. It warns once
+  per market, and `fee.registered_markets()` is there to assert on.
 - **A reporter is the one place that swallows exceptions.** `Runtime._report`
   logs and continues, because nothing about a trading decision depends on anyone
   being told and an unreachable webhook must not take a live strategy down. That is

@@ -193,6 +193,28 @@ adapter for something it does not provide raises
 `UnsupportedExchangeCapability` naming the hook. Set `QATE_EXCHANGE_PLUGINS` to
 load an adapter from a checkout that is not installed.
 
+### What a fill costs
+
+An adapter package also knows what its venues charge, so `qate` ships the registry
+and no rates:
+
+```python
+from qate.trading import fee
+
+fee.register_rates(ExchangeName.GMO, Symbol.BTC_SPOT, maker=-0.0001, taker=0.0005)
+```
+
+Fractions of notional, and **a negative maker rate is a rebate** — the fee comes
+back negative and a `PnlUpdate` that subtracts it is correct. `PnlTracker` reads the
+registry on every fill, so registering late still works.
+
+A market nobody registered is costed at **zero**, with one warning per market: a
+venue whose fees a run does not know is a configuration gap, not a reason to kill a
+live strategy mid-position. It does mean a backtest that registers nothing reports
+no fees at all, which flatters any strategy whose edge is thinner than its costs —
+rates were hardcoded here once, and the price of their being right is that something
+has to supply them. `fee.registered_markets()` is there to assert on first.
+
 ## Settings
 
 There are none. `qate` reads no configuration file, consults no environment
