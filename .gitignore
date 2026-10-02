@@ -118,3 +118,6 @@ test_store
 
 # Editor-local settings
 .vscode/
+
+# PyPI upload token for this project. Never commit.
+.pypirc

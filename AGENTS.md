@@ -184,9 +184,20 @@ abstract base class cannot give.
 
 ```bash
 pytest
-python3 -m build && cd dist && unzip -q *.whl
+rm -rf dist && python3 -m build
+cd dist && unzip -q *.whl && tar xzf *.tar.gz
 grep -rniE 'AKIA|s3://|BEGIN [A-Z ]*PRIVATE KEY|/home/|api[_-]?key *=' .
+cd .. && python3 -m twine check dist/*
+python3 -m twine upload --config-file .pypirc dist/*
 ```
+
+Scan the sdist as well as the wheel, which is what the `tar xzf` is for: `twine
+upload dist/*` ships both, and the sdist carries `tests/` while the wheel does not.
+
+`--config-file .pypirc` is not optional. `.pypirc` here holds this project's upload
+token and nothing else's; twine ignores it without the flag and falls back to
+`~/.pypirc`. It is gitignored, and it must stay that way -- this is a public
+repository.
 
 The scan is on the wheel, not the repository: what ships is the wheel. Add the
 private names of whatever ecosystem this is being extracted from — repositories,
