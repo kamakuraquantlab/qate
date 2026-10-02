@@ -195,39 +195,44 @@ load an adapter from a checkout that is not installed.
 
 ### What a fill costs
 
-An adapter package also knows what its venues charge, so `qate` ships the registry
-and no rates. They arrive the same way an adapter does, through an entry point:
-
-```toml
-[project.entry-points."qate.fees"]
-my_venues = "my_venues.fees:register_fees"
-```
+An adapter carries what its venues charge, alongside the hooks — a fee schedule is
+venue knowledge in exactly the way an endpoint is, and `qate` ships the shape of a rate
+and no rate:
 
 ```python
-from qate.trading import fee
-
-fee.register_rates(ExchangeName.GMO, Symbol.BTC_SPOT, maker=-0.0001, taker=0.0005)
+register(ExchangeAdapter(
+    exchange_name=ExchangeName.GMO,
+    create_api=GMOApi,
+    ...
+    fee_rates={Symbol.BTC_SPOT: FeeSchedule(maker=-0.0001, taker=0.0005)},
+))
 ```
 
-Fractions of notional, and **a negative maker rate is a rebate** — the fee comes
-back negative and a `PnlUpdate` that subtracts it is correct.
+Fractions of notional, and **a negative maker rate is a rebate** — the fee comes back
+negative and a `PnlUpdate` that subtracts it is correct.
 
-Discovery is lazy and happens on the first fee lookup, so an installed package is
-enough: nothing has to import it and nothing has to happen in the right order.
-`PnlTracker` reads the registry per fill for that reason. A registration made by hand
-wins over a plugin's, whenever it is made.
+`factory.get_fee_rate(market)` is how a run asks, and it is the one call in `factory`
+that builds nothing: it reads a number off an adapter, so a replay may use it. A
+`PnlTracker` resolves a rate per market, once, at setup:
 
-The group is separate from `qate.exchanges` on purpose. A replay has to know what a
-fill costs and must still never ask for a venue, so a fee entry point should name a
-module that holds rates and nothing that can open a socket — resolving a fee then
-leaves `qate.exchange.registry` untouched.
+```python
+tracker = PnlTracker()
+tracker.register_fee(maker_market)      # bitbank, say
+tracker.register_fee(taker_market)      # and GMO
+```
 
-A market nobody registered is costed at **zero**, with one warning per market: a
-venue whose fees a run does not know is a configuration gap, not a reason to kill a
-live strategy mid-position. It does mean a run with no fee plugin installed reports
-no fees at all, which flatters any strategy whose edge is thinner than its costs —
-rates were hardcoded here once, and the price of their being right is that something
-has to supply them. `fee.registered_markets()` is there to assert on first.
+One tracker covers several markets deliberately — pisces shares one between a maker
+venue and a taker venue, which is what makes its round-trip PnL a round trip — so the
+rate is per market and a fill is costed with the rate of the market it happened on. An
+`Inventory` registers its own market, so a strategy built the usual way needs none of
+this.
+
+A market no rate was found for is costed at **zero**, with one warning: a venue whose
+fees a run does not know is a configuration gap, not a reason to kill a live strategy
+mid-position. It does mean a run with no adapter installed reports no fees at all,
+which flatters any strategy whose edge is thinner than its costs. Rates were hardcoded
+here once, and the price of their being right is that the package that speaks to a
+venue is the one that has to say.
 
 ## Settings
 

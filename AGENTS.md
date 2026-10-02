@@ -19,9 +19,9 @@ Concretely, and in order of how easy each is to break by accident:
    `komachi`.
 2. **No venue endpoint, symbol mapping, request signing or fee rate belongs
    here.** `qate.core.conn` declares what a connection *is*; the implementation is
-   an adapter's. `qate.trading.fee` declares what a fee *is*; the rates are an
-   adapter's too, and were a hardcoded table here until it became clear a published
-   library cannot keep nine of them current.
+   an adapter's. `ExchangeAdapter.fee_rates` declares what a fee *is*; the numbers are
+   an adapter's too, and were a hardcoded table in `pnl_tracker` until it became clear
+   a published library cannot keep nine of them current.
 3. **No credential, path or host may be named here at all.** Not "no default" —
    none. Credentials, run directories and machine settings are `qate-env`, so this
    package has nothing that could read a key or fall back to an unauthenticated
@@ -51,7 +51,7 @@ Two tests hold this, and both are worth understanding before changing them:
 | A live-trading dev program | `qate-exchanges/tools/` | `tests/` |
 | A production strategy | its own private repo | here |
 | Anything naming a directory, host or credential | `qate-env` | here |
-| A venue's fee rate | `qate-exchanges/fees.py` | here |
+| A venue's fee rate | that venue's folder in `qate-exchanges` | here |
 | A file an environment can contain, or its loader | `qate-env` | here |
 | A third worked example | probably nowhere — two is the point | |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
@@ -155,21 +155,24 @@ abstract base class cannot give.
   assigns it directly. The box size lives on the closer now, so without the
   forwarding setter that assignment would land on an unused attribute and the box
   size would silently never change. `set_box_size` is the supported way.
-- **`qate` holds no fee rate, and an unregistered market is free.**
-  `qate.trading.fee` is a registry plus the arithmetic; rates arrive from a
-  `qate.fees` entry point, which `qate-exchanges` declares. `FeeCalculator` reads the
-  registry per fill rather than snapshotting it, which is what lets discovery be lazy:
-  a `PnlTracker` is built with its strategy, before anything has asked for a fee.
-  The cost of the split is real and is the first thing to suspect in a suspiciously
-  profitable backtest: a process with no fee plugin installed costs every fill at
-  zero. It warns once per market, and `fee.registered_markets()` is there to assert on.
-- **`qate.fees` is a different group from `qate.exchanges`, and must stay one.** A
-  replay has to know what a fill costs and must still never ask for a venue. Keeping
-  fees out of the adapter group is what lets a rate be found without
-  `qate.exchange.registry` being consulted, and so what keeps
-  `test_backtest_end_to_end.py::test_a_backtest_never_asks_for_an_exchange` meaningful.
-  Both groups go through `qate.util.plugins`, which is the only place the lazy
-  entry-point behaviour is written down.
+- **`qate` holds no fee rate, and a market without one is free.** Rates live on
+  `ExchangeAdapter.fee_rates`; `factory.get_fee_rate(market)` reads them and answers
+  `None` rather than raising, because a backtest host has no adapter by design and
+  still has to run. The cost is real and is the first thing to suspect in a
+  suspiciously profitable backtest: a process with no adapter installed costs every
+  fill at zero. `PnlTracker.register_fee` warns when it finds nothing, at setup, and
+  `_fee` warns once per market if a fill arrives for one nobody registered.
+- **A `PnlTracker` is not per market, and `fee_rates` is per market for that reason.**
+  pisces hands one tracker to two `Inventory` objects on two venues, which is what
+  makes its round-trip PnL a round trip. A tracker holding one rate would charge
+  bitbank's rebate for a GMO fill. `Inventory.__init__` calls `register_fee` with its
+  own market, which is where a market and a tracker meet.
+- **The backtest tripwire moved from the registry to the constructors.** It asserted
+  that a replay never consults `qate.exchange.registry`; it cannot, now that a fee
+  rate is read off an adapter. `test_a_backtest_never_asks_for_an_exchange` now
+  tripwires all five `factory.create_*` calls instead — "builds nothing that can
+  connect" rather than "never looks". Keep `get_fee_rate` the only call in `factory`
+  that constructs nothing, and keep a venue's `fees.py` free of its `api`.
 - **A reporter is the one place that swallows exceptions.** `Runtime._report`
   logs and continues, because nothing about a trading decision depends on anyone
   being told and an unreachable webhook must not take a live strategy down. That is

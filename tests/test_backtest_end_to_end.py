@@ -209,23 +209,63 @@ def test_a_backtest_never_asks_for_an_exchange(tmp_path, monkeypatch):
     """The publication guarantee, asserted where it matters.
 
     Not "no adapter is installed" -- that depends on the machine, and on a
-    developer's machine an adapter usually is. What must hold everywhere is that
-    the backtest path never reaches the registry at all, so installing an adapter
-    cannot change what a replay does. A tripwire in place of every registry entry
-    point proves it: the run completes without tripping one.
+    developer's machine an adapter usually is. What must hold everywhere is that a
+    replay never *builds* anything that can reach a venue, whatever is installed. A
+    tripwire in place of every constructor in `factory` proves it: the run completes
+    without tripping one.
+
+    This used to tripwire `registry.get`, `discover` and `registered` instead -- the
+    registry was untouchable, which was a simpler thing to state. It cannot be, now
+    that an adapter also carries its venue's fee rates: `PnlTracker.register_fee` asks
+    `factory.get_fee_rate`, which resolves an adapter to read a number off it. So the
+    line moved from "consults the registry" to "constructs a venue object", which is
+    the property that actually keeps a backtest offline. Reading a rate opens nothing;
+    `create_public_connection` and the other four are the only ways anything here can.
     """
-    from qate.exchange import registry
+    from qate.exchange import factory
 
-    def tripwire(*args, **kwargs):
-        raise AssertionError("a backtest asked the exchange registry for a venue")
+    def tripwire(name):
+        def fail(*args, **kwargs):
+            raise AssertionError(f"a backtest called factory.{name}")
 
-    monkeypatch.setattr(registry, "get", tripwire)
-    monkeypatch.setattr(registry, "discover", tripwire)
-    monkeypatch.setattr(registry, "registered", tripwire)
+        return fail
+
+    for name in (
+        "create_exchange_api",
+        "create_exchange_order_api",
+        "create_exchange_gateway",
+        "create_public_connection",
+        "create_private_connection",
+    ):
+        monkeypatch.setattr(factory, name, tripwire(name))
     monkeypatch.chdir(tmp_path)
 
     strategy = run_backtest(tmp_path)
     assert len(strategy.fills) == 2
+
+
+def test_a_backtest_may_read_a_fee_rate_but_gets_nothing_without_an_adapter(monkeypatch):
+    """The other half of the line above: reading a rate is allowed, and is honest.
+
+    `get_fee_rate` is the one call in `factory` a replay makes. With no adapter
+    installed -- a backtest host, by design -- it answers `None`, and `register_fee`
+    costs that market at zero and warns. It does not raise, and it does not reach for
+    a venue to find out.
+    """
+    from qate.core.model import ExchangeName, Market
+    from qate.core.symbol import Symbol
+    from qate.exchange import factory, registry
+    from qate.trading.pnl_tracker import PnlTracker
+
+    monkeypatch.setattr(registry, "_ADAPTERS", {})
+    monkeypatch.setattr(registry, "_discovered", True)
+
+    market = Market(ExchangeName.GMO, Symbol.BTC_SPOT)
+    assert factory.get_fee_rate(market) is None
+
+    tracker = PnlTracker()
+    assert tracker.register_fee(market) is None
+    assert tracker.fee_rates == {}
 
 
 class _Collector:

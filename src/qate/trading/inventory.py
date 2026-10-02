@@ -18,6 +18,15 @@ class Inventory:
         self.max_drawdown = max_drawdown
         self.tracker = pnl_tracker if pnl_tracker is not None else PnlTracker()
 
+        # An inventory is per market and a tracker is not -- pisces hands one tracker
+        # to two of these, on two venues -- so this is where a market and a tracker
+        # meet, and the right place to tell the tracker what that market charges. A
+        # strategy built the usual way therefore costs its fills without doing
+        # anything; one that tracks PnL without an `Inventory` calls `register_fee`
+        # itself. A venue with no adapter installed answers nothing, which warns and
+        # costs that market's fills at zero.
+        self.tracker.register_fee(market)
+
         # Peak PnL tracking for drawdown calculation
         self._peak_pnl = 0.0
 

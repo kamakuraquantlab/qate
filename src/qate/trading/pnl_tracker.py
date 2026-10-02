@@ -12,8 +12,9 @@ from qate.core.model import (
     Tag,
     TimeSeriesData,
 )
-from qate.core.order import OrderResponse
-from qate.trading.fee import FeeCalculator
+from qate.core.order import OrderResponse, OrderType
+from qate.exchange import factory
+from qate.exchange.registry import FeeSchedule
 
 LOG = getLogger(__name__)
 EPSILON = 0.00001
@@ -96,13 +97,62 @@ class PnlTracker:
         # Tracking
         self.last_close_ts = -1.0
 
-        # Reads the fee registry per fill. `qate` registers no rate itself: an
-        # adapter package supplies the venues it adapts, and an unregistered market
-        # is costed at zero with a warning. See `qate.trading.fee`.
-        self.fee_calc = FeeCalculator()
+        # What each market this tracker sees charges, by `market.id` -- `Market` is a
+        # plain dataclass and unhashable, so it cannot key a dict itself. Filled by
+        # `register_fee`, and empty until something calls it: a tracker with no rates
+        # costs every fill at zero.
+        self.fee_rates: dict[str, FeeSchedule] = {}
+        self._unknown_markets: set[str] = set()
 
         # Open-leg fee deferred until close so CLOSE PnlUpdate carries the full round-trip cost.
         self._pending_open_fee = 0.0
+
+    def register_fee(self, market: Market) -> FeeSchedule | None:
+        """Resolve and keep what `market` charges, once, before it is traded.
+
+        One tracker covers several markets on purpose -- pisces shares one between a
+        maker venue and a taker venue, which is what makes its round-trip PnL a round
+        trip -- so the rate is per market here rather than per tracker, and a fill is
+        costed with the rate of the market it happened on.
+
+        `Inventory` calls this with its own market, so a strategy built the usual way
+        needs nothing. A strategy that costs fills without an `Inventory` calls it
+        itself, per market, at setup.
+
+        Returns what it found, `None` included, for a caller that wants to check.
+        `None` is not fatal: the market is costed at zero and `_fee` says so once.
+        """
+        schedule = factory.get_fee_rate(market)
+        if schedule is None:
+            LOG.warning(
+                f"No fee rate for {market.id}: its fills will be costed at zero and this "
+                f"run's PnL will omit them. Install the adapter package for "
+                f"{market.exchange_name.name}, or set fee_rates on its ExchangeAdapter."
+            )
+            return None
+        self.fee_rates[market.id] = schedule
+        self._unknown_markets.discard(market.id)
+        LOG.info(f"Fee rate for {market.id}: maker={schedule.maker} taker={schedule.taker}")
+        return schedule
+
+    def _fee(self, market: Market, notional: float, order_type: OrderType) -> float:
+        """What one fill costs. Negative for a maker fill on a rebating venue."""
+        schedule = self.fee_rates.get(market.id)
+        if schedule is None:
+            self._warn_unknown(market)
+            return 0.0
+        return notional * schedule.rate(order_type)
+
+    def _warn_unknown(self, market: Market) -> None:
+        """Once per market: a fill arrived on a market nobody registered a rate for."""
+        if market.id in self._unknown_markets:
+            return
+        self._unknown_markets.add(market.id)
+        known = ", ".join(sorted(self.fee_rates)) or "none"
+        LOG.warning(
+            f"Costing {market.id} fills at zero: no fee rate was registered for it. "
+            f"Registered: {known}. Call PnlTracker.register_fee({market.id}) at setup."
+        )
 
     def process_order(self, order_response: OrderResponse) -> PnlUpdate:
         req = order_response.order_request
@@ -155,7 +205,7 @@ class PnlTracker:
             )
 
         # Fee is deferred: included in the next CLOSE PnlUpdate for a clear round-trip view.
-        fee = self.fee_calc.calculate(req.market, notional, req.order_type)
+        fee = self._fee(req.market, notional, req.order_type)
         self.total_fees += fee
         self._pending_open_fee += fee
 
@@ -229,7 +279,7 @@ class PnlTracker:
                 f"close={price:.3f} pnl={pnl:.3f} remaining={self.long_position:.6f}"
             )
 
-        fee = self.fee_calc.calculate(req.market, notional, req.order_type)
+        fee = self._fee(req.market, notional, req.order_type)
         self.total_fees += fee
 
         # Combine with deferred open-leg fee for a round-trip view in this PnlUpdate.

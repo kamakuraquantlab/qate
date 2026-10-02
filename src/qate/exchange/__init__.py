@@ -11,9 +11,11 @@ from .factory import (
     create_exchange_order_api,
     create_private_connection,
     create_public_connection,
+    get_fee_rate,
 )
 from .registry import (
     ExchangeAdapter,
+    FeeSchedule,
     UnknownExchange,
     UnsupportedExchangeCapability,
     register,
@@ -21,6 +23,7 @@ from .registry import (
 
 __all__ = [
     "ExchangeAdapter",
+    "FeeSchedule",
     "UnknownExchange",
     "UnsupportedExchangeCapability",
     "available_exchanges",
@@ -29,5 +32,6 @@ __all__ = [
     "create_exchange_order_api",
     "create_private_connection",
     "create_public_connection",
+    "get_fee_rate",
     "register",
 ]
