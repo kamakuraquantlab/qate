@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from itertools import count
 
-from .model import Field, Market, Measurement, Metric, SettleType, Side, Tag, TimeSeriesData
+from .model import Market, SettleType, Side, TimeSeriesData
 from .symbol import get_symbol_def
 
 
@@ -93,40 +93,6 @@ class OrderResponse(TimeSeriesData):
                 s += f" position={self.position_id}"
             s += f" elapsed={self.life_ts:.3f}"
         return s
-
-    def to_metric(self) -> Metric:
-        order_request = self.order_request
-        return Metric(
-            Measurement.ORDER.value,
-            self.get_ts(),
-            [
-                Tag.EXCHANGE_NAME.value,
-                order_request.market.exchange_name.value,
-                Tag.SYMBOL.value,
-                order_request.market.symbol.value,
-                Tag.SIDE.value,
-                order_request.side.value,
-                Tag.SETTLE_TYPE.value,
-                order_request.settle_type.value,
-                Tag.ORDER_TYPE.value,
-                order_request.order_type.value,
-            ],
-            [
-                Field.PRICE.value,
-                order_request.price,
-                Field.EXEC_PRICE.value,
-                self.exec_price,
-                Field.EXEC_SIZE.value,
-                self.exec_size,
-                Field.SLIPPAGE.value,
-                self.slippage,
-                Field.TIME_TO_CREATE.value,
-                self.created_ts - order_request.ts,
-                Field.TIME_TO_FILL.value,
-                self.completed_ts - order_request.ts,
-            ],
-        )
-
 
 @dataclass
 class ExchangeOrder(TimeSeriesData):

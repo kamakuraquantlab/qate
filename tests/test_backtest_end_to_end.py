@@ -1,8 +1,7 @@
 from qate.core.ev_type import EventType
-from qate.core.model import ExchangeName, Market, Measurement, OrderBook, OrderLevel, SettleType, Side
+from qate.core.model import ExchangeName, Market, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
-from qate.trading import metrics
 from qate.trading.gateways import SimulatorGateway
 from qate.trading.replay import ReplayQueue
 from qate.trading.strategy import Strategy
@@ -82,7 +81,7 @@ class BuyThenSell(Strategy):
 MIDS = [15_000_000.0 + n * 10_000 for n in range(6)]
 
 
-def run_backtest(tmp_path) -> BuyThenSell:
+def run_backtest(tmp_path) -> tuple[BuyThenSell, list]:
     """The whole path: recorded books, through the simulator, into a metric log.
 
     Returns the finished strategy, for the caller to assert on.
@@ -99,20 +98,17 @@ def run_backtest(tmp_path) -> BuyThenSell:
     trader.add_gateway(gateway)
     trader.register(EventType.MARKET_ORDER_BOOK, gateway.handle_order_book)
 
-    metrics_writer = metrics.MetricLog(metrics.RotationInterval.ONE_DAY, 2, "Metrics")
-
     collected: list = []
-    trader.add_status_listener(_Collector(collected, metrics_writer))
+    trader.add_status_listener(_Collector(collected))
 
     trader.run()
 
-    metrics_writer.close()
-    return strategy
+    return strategy, collected
 
 
-def test_backtest_fills_orders_and_writes_a_metric_log(tmp_path, monkeypatch):
+def test_backtest_fills_orders_and_emits_metrics(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    strategy = run_backtest(tmp_path)
+    strategy, metrics = run_backtest(tmp_path)
 
     # Every book was accounted for, and the replay ended when the data did with
     # no sentinel appended. Trader.before_loop runs a Warmup that drains the
@@ -131,10 +127,7 @@ def test_backtest_fills_orders_and_writes_a_metric_log(tmp_path, monkeypatch):
     assert sell.exec_price == MIDS[4] - 500  # fifth book's best bid
     assert buy.exec_size == sell.exec_size == BuyThenSell.ORDER_SIZE
 
-    # The log on disk, readable back with no database anywhere in sight.
-    written = list(metrics.read_metrics_dir(tmp_path, "Metrics"))
-    assert len(written) == strategy.books_seen
-    assert {m.measurement for m in written} == {Measurement.MARKET_PRICE.value}
+    assert len(metrics) == strategy.books_seen
 
 
 def test_cancelling_an_already_filled_order_is_not_a_fault():
@@ -215,7 +208,7 @@ def test_a_backtest_never_asks_for_an_exchange(tmp_path, monkeypatch):
         monkeypatch.setattr(factory, name, tripwire(name))
     monkeypatch.chdir(tmp_path)
 
-    strategy = run_backtest(tmp_path)
+    strategy, _ = run_backtest(tmp_path)
     assert len(strategy.fills) == 2
 
 
@@ -244,18 +237,14 @@ def test_a_backtest_may_read_a_fee_rate_but_gets_nothing_without_an_adapter(monk
 
 
 class _Collector:
-    """Stands in for a result queue: metrics to the local writer, orders kept."""
+    """Collect strategy metrics emitted during the replay."""
 
-    def __init__(self, orders: list, metrics_writer):
-        self.orders = orders
-        self.metrics_writer = metrics_writer
+    def __init__(self, metrics: list):
+        self.metrics = metrics
 
     def put(self, data):
         if data is None:
             return
         (event_type, event) = data
         if event_type == EventType.METRICS:
-            for metric in event:
-                self.metrics_writer.add(metric)
-        elif event_type == EventType.ORDER_FILLED:
-            self.orders.append(event)
+            self.metrics.extend(event)

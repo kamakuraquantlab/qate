@@ -122,23 +122,6 @@ def _flatten(data: dict) -> list:
 
 @dataclass
 class Metric(TimeSeriesData):
-    """One measurement: what, when, how it is labelled, and the numbers.
-
-    The thing a strategy emits and a metric log records. `tags` and `fields` are
-    flat alternating key/value lists rather than dicts, and the keys are usually
-    enum *values* rather than names, because this is written millions of times per
-    run and packs straight into msgpack that way.
-
-    That encoding is why this class exists. It used to be a bare list passed
-    around positionally, so code that wanted to add a tag reached in as
-    `metric_object[2].extend([...])`. `to_list` and `from_list` keep the on-disk
-    form byte-identical while giving the thing a name.
-
-    The enums behind those keys -- `Measurement`, `Tag`, `Field`, and the enums a
-    tag value resolves through -- are therefore **append-only**. Reordering a
-    member silently rewrites the meaning of every metric file already written.
-    """
-
     measurement: int
     ts: float
     tags: list = field(default_factory=list)
@@ -326,17 +309,6 @@ class OrderBook(TimeSeriesData):
             return None
 
         return MarketPrice(bid, ask, self.symbol, self.exchange_name, self.exchange_ts)
-
-
-@dataclass
-class ChatMessage(TimeSeriesData):
-    author: str
-    channel: str
-    content: str
-    ts: float = time.time()
-
-    def get_ts(self) -> float:
-        return self.ts
 
 
 class FatalException(Exception):

@@ -71,9 +71,9 @@ this package; one of those sweeps nearly broke `qate-exchanges`.
 
 **`qate.trading.runtime.Runtime` is the exception, and knowingly.** Nothing here
 imports it: a backtest drives a `Trader` directly and the live runner that needs a
-loop is private. It stays because it is what gives `Reporter` and `MetricLog` a
-meaning — the composition they were designed for, expressed in the package that
-defines them — and because it names nothing outside this package.
+loop is private. It stays because it is what gives `Reporter` a meaning — the
+composition it was designed for, expressed in the package that defines it — and
+because it names nothing outside this package.
 `tests/test_reporter.py` is its consumer.
 
 **`qate` does not read market data and does not know where it lives.** A replayer
@@ -120,12 +120,10 @@ abstract base class cannot give.
   `Strategy.warmup_*` until `is_ready`. It consumes at least one event even when
   the strategy is ready from the start. A test that counts events must account
   for it.
-- **`qate` has no storage layer.** It writes one thing: the local metric log in
-  `qate.trading.metrics`. Parquet layouts, database clients and export live with
-  whoever produces the results — for a backtest, Enoshima. `qate.store` existed and
-  was removed for this reason; two of its three modules had no consumer here at all.
-- **Nothing on a run's hot path may require a database to be reachable.** The log
-  is appended locally and shipped later, if at all.
+- **`qate` has no storage layer.** A `Reporter` may persist results, but its
+  implementation belongs to the application or data package that owns the format.
+- **Nothing on a run's hot path may require a database to be reachable.** Results
+  may be appended locally and shipped later, if at all.
 - **Metric objects pack enum *values*, not names** — `[measurement, ts, tags,
   fields]` with integer keys. `ExchangeName`, `Symbol`, `Measurement`, `Tag` and
   `Field` are therefore append-only: reordering a member silently rewrites the

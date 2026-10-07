@@ -121,47 +121,32 @@ on disk to results on disk, and is the shortest complete example.
 
 ## Reporting a run as it happens
 
-A `MetricLog` records everything for later; a `Reporter` is the other direction —
-the few things a person wants to see while a strategy runs.
+A `Reporter` receives every result of a live run. The application decides whether
+that destination is a local file, a chat service, or something else.
 
 ```python
 from qate.trading.reporter import Reporter
 from qate.trading.runtime import Runtime
 
 class Printer(Reporter):
-    def on_order(self, order_response):
+    def report_order(self, order_response):
         print(order_response.summary)
 
-runtime = Runtime(strategy)      # the loop a live run sits in: conns, gateways, metrics
+runtime = Runtime(strategy)
 runtime.add_reporter(Printer())
 ```
 
-One method per kind of outcome — `on_order`, `on_pnl_update`, `on_summary`,
-`on_exception`, `on_message`, `on_start`, `on_stop` — and every one is a no-op by
-default, so implement what you care about. Several reporters can be added and each
+The interface is `start`, `stop`, `report_order`, `report_metrics`, `report_pnl`,
+`report_exception`, and `report_message`. Every method is a no-op by default, so
+implement only what the destination needs. Several reporters can be added and each
 sees everything. A reporter that raises is logged and ignored: a run does not
 depend on anyone being told.
 
 No implementation ships here — a destination is a dependency, and a chat client in
 this package would be one nobody backtesting asked for. A live runner adds its own.
 
-## What a run records
-
-A local, append-only log of metric records, and nothing else:
-
-```python
-from qate.trading.metrics import MetricLog, RotationInterval
-
-log = MetricLog(RotationInterval.FIVE_MINUTE, 256, "Metrics")
-```
-
-A running strategy appends to a file and never waits on a network; a finished run
-is self-contained. Reading it back is `read_metrics_dir`.
-
-Shipping that log anywhere — InfluxDB for charting, parquet for analysis — is a
-later and separate step belonging to whoever wants it. `qate` has no storage layer
-and no database client, which is why a run cannot fail because a backend is down.
-Enoshima is the worked example of the other half.
+qate has no storage implementation or serialization dependency. Applications that
+need durable results add a reporter supplied by their storage package.
 
 ## Supplying an exchange
 

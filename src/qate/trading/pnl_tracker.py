@@ -2,16 +2,7 @@ from dataclasses import dataclass, field
 from itertools import count
 from logging import getLogger
 
-from qate.core.model import (
-    Field,
-    Market,
-    Measurement,
-    Metric,
-    SettleType,
-    Side,
-    Tag,
-    TimeSeriesData,
-)
+from qate.core.model import Market, SettleType, Side, TimeSeriesData
 from qate.core.order import OrderResponse, OrderType
 from qate.exchange import factory
 from qate.exchange.registry import FeeSchedule
@@ -44,39 +35,6 @@ class PnlUpdate(TimeSeriesData):
         if self.open_cost < EPSILON:
             return 0.0
         return self.pnl / self.open_cost
-
-    def to_metric(self) -> Metric:
-        if self.settle_type == SettleType.CLOSE:
-            fields = [
-                Field.FEE.value,
-                self.fee,
-                Field.PNL.value,
-                self.pnl,
-                "return",
-                self.pnl_return,
-            ]
-        else:
-            fields = [
-                Field.FEE.value,
-                self.fee,
-            ]
-
-        return Metric(
-            Measurement.PNL.value,
-            self.get_ts(),
-            [
-                Tag.EXCHANGE_NAME.value,
-                self.market.exchange_name.value,
-                Tag.SYMBOL.value,
-                self.market.symbol.value,
-                Tag.SETTLE_TYPE.value,
-                self.settle_type.value,
-                Tag.SIDE.value,
-                self.side.value,
-            ],
-            fields,
-        )
-
 
 class PnlTracker:
     def __init__(self):

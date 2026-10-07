@@ -35,7 +35,6 @@ classifiers = [
 # whoever owns them, so there is no data dependency to bring an HTTP client in
 # through the back door and no database client at all.
 dependencies = [
-    "msgpack>=1.1",
     "numpy>=2.0",
     "pandas>=2.2",
     "pyarrow>=15.0",

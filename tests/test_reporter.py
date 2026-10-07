@@ -24,32 +24,26 @@ class Recorder(Reporter):
         super().__init__()
         self.calls: list[tuple] = []
 
-    def connect(self):
-        self.calls.append(("connect",))
+    def start(self):
+        self.calls.append(("start",))
 
-    def disconnect(self):
-        self.calls.append(("disconnect",))
+    def stop(self):
+        self.calls.append(("stop",))
 
-    def on_start(self):
-        self.calls.append(("on_start",))
+    def report_order(self, order_response):
+        self.calls.append(("report_order", order_response))
 
-    def on_stop(self):
-        self.calls.append(("on_stop",))
+    def report_metrics(self, metrics):
+        self.calls.append(("report_metrics", metrics))
 
-    def on_order(self, order_response):
-        self.calls.append(("on_order", order_response))
+    def report_pnl(self, pnl_update):
+        self.calls.append(("report_pnl", pnl_update))
 
-    def on_pnl_update(self, pnl_update):
-        self.calls.append(("on_pnl_update", pnl_update))
+    def report_exception(self, error):
+        self.calls.append(("report_exception", error))
 
-    def on_summary(self, market_id, summary):
-        self.calls.append(("on_summary", market_id, summary))
-
-    def on_exception(self, error):
-        self.calls.append(("on_exception", error))
-
-    def on_message(self, message):
-        self.calls.append(("on_message", message))
+    def report_message(self, message):
+        self.calls.append(("report_message", message))
 
     @property
     def kinds(self) -> list[str]:
@@ -59,13 +53,13 @@ class Recorder(Reporter):
 class Exploding(Reporter):
     """Fails in every hook, the way an unreachable service would."""
 
-    def on_order(self, order_response):
+    def report_order(self, order_response):
         raise RuntimeError("webhook is down")
 
-    def on_pnl_update(self, pnl_update):
+    def report_pnl(self, pnl_update):
         raise RuntimeError("webhook is down")
 
-    def disconnect(self):
+    def stop(self):
         raise RuntimeError("socket already closed")
 
 
@@ -106,7 +100,7 @@ def pnl(settle_type: SettleType) -> PnlUpdate:
 
 
 def runtime(tmp_path, monkeypatch, *reporters) -> Runtime:
-    monkeypatch.chdir(tmp_path)  # the metric log writes to cwd
+    monkeypatch.chdir(tmp_path)
     run = Runtime(Strategy())
     for reporter in reporters:
         run.add_reporter(reporter)
@@ -120,24 +114,20 @@ def test_a_fill_reaches_every_reporter(tmp_path, monkeypatch):
     response = fill()
     run.handle_order(response)
 
-    assert a.kinds == ["on_order"]
-    assert b.kinds == ["on_order"]
+    assert a.kinds == ["report_order"]
+    assert b.kinds == ["report_order"]
     assert a.calls[0][1] is response
 
 
-def test_a_close_reports_the_update_and_the_running_summary(tmp_path, monkeypatch):
+def test_a_close_reports_the_update(tmp_path, monkeypatch):
     recorder = Recorder()
     run = runtime(tmp_path, monkeypatch, recorder)
 
     run.handle_pnl_update(pnl(SettleType.OPEN))
-    assert recorder.kinds == ["on_pnl_update"]
+    assert recorder.kinds == ["report_pnl"]
 
     run.handle_pnl_update(pnl(SettleType.CLOSE))
-    assert recorder.kinds == ["on_pnl_update", "on_pnl_update", "on_summary"]
-
-    _, market_id, summary = recorder.calls[-1]
-    assert market_id == MARKET.id
-    assert summary
+    assert recorder.kinds == ["report_pnl", "report_pnl"]
 
 
 def test_an_open_reports_no_summary(tmp_path, monkeypatch):
@@ -145,7 +135,7 @@ def test_an_open_reports_no_summary(tmp_path, monkeypatch):
     recorder = Recorder()
     run = runtime(tmp_path, monkeypatch, recorder)
     run.handle_pnl_update(pnl(SettleType.OPEN))
-    assert "on_summary" not in recorder.kinds
+    assert "report_message" not in recorder.kinds
 
 
 def test_exceptions_and_messages_are_reported(tmp_path, monkeypatch):
@@ -158,7 +148,7 @@ def test_exceptions_and_messages_are_reported(tmp_path, monkeypatch):
     for _ in range(2):
         run._next()
 
-    assert recorder.kinds == ["on_exception", "on_message"]
+    assert recorder.kinds == ["report_exception", "report_message"]
     assert recorder.calls[0][1] is error
     assert recorder.calls[1][1] == "hello"
 
@@ -172,7 +162,7 @@ def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
     run.handle_pnl_update(pnl(SettleType.CLOSE))
 
     # The working reporter still saw everything, in order.
-    assert good.kinds == ["on_order", "on_pnl_update", "on_summary"]
+    assert good.kinds == ["report_order", "report_pnl"]
 
 
 def test_a_reporter_that_overrides_nothing_is_harmless(tmp_path, monkeypatch):
