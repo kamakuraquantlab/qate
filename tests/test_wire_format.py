@@ -135,3 +135,67 @@ def test_a_new_member_takes_a_free_number():
                 f"{enum.__name__}.{member.name} reuses {member.value}, which "
                 f"{taken[member.value]} had. Old files would read as the wrong thing."
             )
+
+
+# The two records a run reports about its own trading. K2 writes them to its
+# msgpack log and Enoshima to InfluxDB, and a dashboard reads both, so the layout
+# -- which keys, in which order -- is pinned here alongside the numbers.
+
+
+def _order():
+    from qate.core.model import Market, SettleType, Side
+    from qate.core.order import OrderRequest, OrderResponse, OrderState
+
+    request = OrderRequest(
+        100.0, Market(ExchangeName.GMO, Symbol.XRP_JPY), Side.BUY, 50.0, 2.0, SettleType.OPEN
+    )
+    return OrderResponse(
+        request, state=OrderState.FILLED, created_ts=100.5, exec_size=2.0, exec_price=50.5, completed_ts=101.0
+    )
+
+
+def test_an_order_metric_layout():
+    from qate.core.model import SettleType, Side
+    from qate.core.order import OrderType
+
+    metric = _order().to_metric()
+    assert (metric.measurement, metric.ts) == (Measurement.ORDER.value, 101.0)
+    assert metric.tags == [
+        Tag.EXCHANGE_NAME.value, ExchangeName.GMO.value,
+        Tag.SYMBOL.value, Symbol.XRP_JPY.value,
+        Tag.SIDE.value, Side.BUY.value,
+        Tag.SETTLE_TYPE.value, SettleType.OPEN.value,
+        Tag.ORDER_TYPE.value, OrderType.DEFAULT.value,
+    ]  # fmt: skip
+    assert metric.fields == [
+        Field.PRICE.value, 50.0,
+        Field.EXEC_PRICE.value, 50.5,
+        Field.EXEC_SIZE.value, 2.0,
+        Field.SLIPPAGE.value, 1.0,
+        Field.TIME_TO_CREATE.value, 0.5,
+        Field.TIME_TO_FILL.value, 1.0,
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("closing", [False, True])
+def test_a_pnl_metric_layout(closing):
+    from qate.core.model import Market, SettleType, Side
+    from qate.trading.pnl_tracker import PnlUpdate
+
+    settle = SettleType.CLOSE if closing else SettleType.OPEN
+    update = PnlUpdate(
+        200.0, 100.0, 10.0 if closing else 0.0, 0.25, settle, Side.SELL, 101.0, 100.0, 0.0,
+        Market(ExchangeName.GMO, Symbol.XRP_JPY),
+    )  # fmt: skip
+    metric = update.to_metric()
+    assert (metric.measurement, metric.ts) == (Measurement.PNL.value, 200.0)
+    assert metric.tags == [
+        Tag.EXCHANGE_NAME.value, ExchangeName.GMO.value,
+        Tag.SYMBOL.value, Symbol.XRP_JPY.value,
+        Tag.SETTLE_TYPE.value, settle.value,
+        Tag.SIDE.value, Side.SELL.value,
+    ]  # fmt: skip
+    expected = [Field.FEE.value, 0.25]
+    if closing:
+        expected += [Field.PNL.value, 10.0, "return", 0.1]
+    assert metric.fields == expected
