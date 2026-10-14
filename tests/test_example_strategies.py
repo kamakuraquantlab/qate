@@ -158,7 +158,6 @@ def test_pisces_constructs_from_its_documented_params(variant):
     }
     strategy = get_strategy_class("qate.strategy.pisces", variant)(pisces_config(), params)
     assert isinstance(strategy, Strategy)
-    assert strategy.get_param_set_id()
 
 
 def test_pisces_schedule_closes_the_maintenance_window():

@@ -29,20 +29,6 @@ class Strategy(StatusFeed, Generic[C]):
         self.config: C = config
         self.params = params if params is not None else {}
 
-    def get_param_multiplier(self, name: str) -> int:
-        # Multiplier to convert a float param into a compact integer for id generation.
-        # e.g. with factor=100000: spread_threshold=0.00005 → 5, volatility_threshold=0.0002 → 20
-        # producing an id segment like "5_20". Override per strategy to match param scale.
-        return 1000
-
-    def get_param_set_id(self) -> str:
-        # Mostly for offline analysis
-        # Produces a compact string id from all params, e.g. "5_20" for two params.
-        # Each param value is scaled by its multiplier to strip the decimal point.
-        # Subclasses should override get_param_multiplier() to match their param scale,
-        # and may override this method entirely to include config fields (e.g. order_size).
-        return "_".join([str(int(self.get_param_multiplier(k) * v)) for k, v in list(self.params.items())])
-
     def handle_order_book(self, order_book: OrderBook):
         pass
 
