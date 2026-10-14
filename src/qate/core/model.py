@@ -252,7 +252,9 @@ class MarketPrice(TimeSeriesData):
         )
 
 
-@dataclass
+# Slotted: a day of full-depth books is millions of these, and a slotted
+# instance is about half the memory and quicker to build.
+@dataclass(slots=True)
 class OrderLevel:
     price: float
     amount: float
