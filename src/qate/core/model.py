@@ -94,7 +94,8 @@ class Market:
 
     @property
     def id(self) -> str:
-        return f"{self.exchange_name.name}:{self.symbol.name}"
+        # `_name_`, not `name`: see the note on `to_metric`'s codes below.
+        return f"{self.exchange_name._name_}:{self.symbol._name_}"
 
     @classmethod
     def from_str(cls, text: str):

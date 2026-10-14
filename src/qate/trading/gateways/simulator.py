@@ -45,10 +45,12 @@ class SimulatorGateway(ExchangeGateway):
         market_feed.add_order_book_listener(_OrderBookSink(self))
 
     def handle_order_book(self, order_book: OrderBook):
-        if order_book.market.exchange_name != self.exchange_name:
+        # Called for every book, by every backtest of a sweep: compare the
+        # fields rather than build a Market to compare.
+        if order_book.exchange_name is not self._exchange_name:
             return
         self.now_ts = order_book.get_ts()
-        self.order_books[order_book.market.id] = order_book
+        self.order_books[f"{order_book.exchange_name._name_}:{order_book.symbol._name_}"] = order_book
         for order_tracker in list(self.orders.values()):
             order_request = order_tracker.order_request
 
