@@ -285,3 +285,19 @@ class _Collector:
         (event_type, event) = data
         if event_type == EventType.METRICS:
             self.metrics.extend(event)
+
+
+def test_a_strategy_drops_the_measurements_its_runtime_does_not_record():
+    """A live run records everything; a backtest tells the strategy what it would throw away."""
+    from qate.core.model import Measurement, Metric
+
+    strategy = BuyThenSell()
+    assert strategy.wants_metric(Measurement.TRADE._value_)
+
+    strategy.skip_measurements = frozenset({Measurement.TRADE._value_})
+    assert not strategy.wants_metric(Measurement.TRADE._value_)
+    assert strategy.wants_metric(Measurement.TRADING._value_)
+
+    strategy.add_metric(Metric(Measurement.TRADE._value_, 1.0))
+    strategy.add_metric(Metric(Measurement.TRADING._value_, 1.0))
+    assert [m.measurement for m in strategy.feed_writer.buffer] == [Measurement.TRADING._value_]

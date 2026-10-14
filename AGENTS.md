@@ -178,6 +178,19 @@ abstract base class cannot give.
 - **Fail fast.** Do not add runtime guards for logic bugs. Check only for
   dynamic errors: a missing file, an empty book, a network fault.
 
+- **Per-event code runs in every thread of a free-threaded sweep.** Enoshima
+  replays one book through dozens of strategies at once, one thread each. Code
+  that runs per trade or per book must not read `Enum.value` or `.name` (a
+  descriptor that runs Python code: read `_value_`/`_name_`, or a module
+  constant), must not build a throwaway object to compare fields (`book.market`),
+  and must not make every thread touch one shared object. Each of these made a
+  45-way sweep 2-3x slower while looking free in a single-threaded profile.
+- **`Strategy.skip_measurements` is set by the runtime**: the measurement codes
+  nobody records in this run. `add_metric` drops them; `wants_metric` lets a
+  strategy not build one. Empty -- record everything -- unless a runtime says so.
+- **`OrderLevel` is slotted.** A day of books is millions of them. It has no
+  `__dict__`; `qate.util.encoder` handles slotted dataclasses for that reason.
+
 ## Before publishing
 
 ```bash

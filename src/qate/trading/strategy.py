@@ -21,6 +21,13 @@ C = TypeVar("C")
 
 
 class Strategy(StatusFeed, Generic[C]):
+    # Measurement codes nobody records in this run, set by the runtime. A live
+    # run records everything; a backtest drops what bronze already holds, and
+    # a metric built per market event for every parameter set of a sweep is
+    # not free. `add_metric` drops these; `wants_metric` lets a strategy skip
+    # building one at all.
+    skip_measurements: frozenset[int] = frozenset()
+
     def __init__(self, config: C = None, params: dict | None = None):
         super(Strategy, self).__init__()
         self._is_ready = False
@@ -86,8 +93,14 @@ class Strategy(StatusFeed, Generic[C]):
     def is_ready(self) -> bool:
         return self._is_ready
 
+    def wants_metric(self, measurement: int) -> bool:
+        """Whether a metric of this measurement code would be recorded."""
+        return measurement not in self.skip_measurements
+
     def add_metric(self, metric: Metric, flush_now: bool = False):
         """Emit one metric. Where it ends up is the runner's decision, not yours."""
+        if metric.measurement in self.skip_measurements:
+            return
         self.feed_writer.add(metric)
         if flush_now:
             self.feed_writer.flush()
