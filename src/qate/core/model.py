@@ -111,6 +111,24 @@ class TimeSeriesData(ABC):
         pass
 
 
+# The packed codes `to_metric` writes, read once. `Enum.value` is a descriptor
+# that runs Python code on every access, and every backtest thread reads the
+# same members for every trade and every book: under free-threaded Python that
+# was most of a sweep's time, spent contending on objects no thread changes.
+# `_value_` is the attribute `value` returns, read without the descriptor.
+_TRADING = Measurement.TRADING._value_
+_TRADE = Measurement.TRADE._value_
+_MARKET_PRICE = Measurement.MARKET_PRICE._value_
+_TAG_EXCHANGE_NAME = Tag.EXCHANGE_NAME._value_
+_TAG_SYMBOL = Tag.SYMBOL._value_
+_TAG_SIDE = Tag.SIDE._value_
+_FIELD_PRICE = Field.PRICE._value_
+_FIELD_SIZE = Field.SIZE._value_
+_FIELD_BID = Field.BID._value_
+_FIELD_ASK = Field.ASK._value_
+_FIELD_SPREAD = Field.SPREAD._value_
+
+
 def _flatten(data: dict) -> list:
     """{"a": 1, "b": 2} -> ["a", 1, "b", 2]."""
     flat = []
@@ -145,7 +163,7 @@ class Metric(TimeSeriesData):
     @classmethod
     def trading(cls, ts: float, fields: dict, tags: dict = None) -> "Metric":
         """A `TRADING` metric from plain dicts, for a strategy's own numbers."""
-        return cls(Measurement.TRADING.value, ts, _flatten(tags or {}), _flatten(fields))
+        return cls(_TRADING, ts, _flatten(tags or {}), _flatten(fields))
 
 
 @dataclass
@@ -168,20 +186,20 @@ class Trade(TimeSeriesData):
 
     def to_metric(self) -> Metric:
         return Metric(
-            Measurement.TRADE.value,
+            _TRADE,
             self.exchange_ts,
             [
-                Tag.EXCHANGE_NAME.value,
-                self.exchange_name.value,
-                Tag.SYMBOL.value,
-                self.symbol.value,
-                Tag.SIDE.value,
-                self.side.value,
+                _TAG_EXCHANGE_NAME,
+                self.exchange_name._value_,
+                _TAG_SYMBOL,
+                self.symbol._value_,
+                _TAG_SIDE,
+                self.side._value_,
             ],
             [
-                Field.PRICE.value,
+                _FIELD_PRICE,
                 self.price,
-                Field.SIZE.value,
+                _FIELD_SIZE,
                 self.size,
             ],
         )
@@ -214,20 +232,20 @@ class MarketPrice(TimeSeriesData):
 
     def to_metric(self) -> Metric:
         return Metric(
-            Measurement.MARKET_PRICE.value,
+            _MARKET_PRICE,
             self.exchange_ts,
             [
-                Tag.EXCHANGE_NAME.value,
-                self.exchange_name.value,
-                Tag.SYMBOL.value,
-                self.symbol.value,
+                _TAG_EXCHANGE_NAME,
+                self.exchange_name._value_,
+                _TAG_SYMBOL,
+                self.symbol._value_,
             ],
             [
-                Field.BID.value,
+                _FIELD_BID,
                 self.bid,
-                Field.ASK.value,
+                _FIELD_ASK,
                 self.ask,
-                Field.SPREAD.value,
+                _FIELD_SPREAD,
                 self.spread,
             ],
         )
