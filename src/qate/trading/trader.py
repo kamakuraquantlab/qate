@@ -14,10 +14,23 @@ LOG = getLogger(__name__)
 
 
 class Trader(EventLoop):
-    def __init__(self, strategy: Strategy, event_queue: EventQueue = None):
+    """Drives one strategy: warmup, then market and order events into its handlers.
+
+    `reload_params` re-reads `params.json` every 10 seconds and hands it to
+    `Strategy.update_params`, which is how a live run takes a parameter change
+    without a restart. It is on by default because a live run is the default.
+    A replay turns it off. A backtest sets each run's parameters itself, and
+    the task's clock is the wall clock, so a sweep would have every run's
+    parameters replaced by the file ten real seconds in -- at an arbitrary
+    point in the replay, which is worse than at the start.
+    """
+
+    def __init__(self, strategy: Strategy, event_queue: EventQueue = None,
+                 reload_params: bool = True):
         super(Trader, self).__init__(event_queue)
         self.strategy = strategy
         self.has_gateway = False
+        self.reload_params = reload_params
 
     def subscribe_market_data_feed(self, market_feed: MarketDataFeed):
         market_feed.add_order_book_listener(self.event_queue)
@@ -48,7 +61,8 @@ class Trader(EventLoop):
         self.register(EventType.MSG_IN, self.strategy.handle_msg)
         self.register(EventType.TRADING_STOP, self.strategy.handle_stop)
 
-        self.repeat(10, UpdateParamsTask())
+        if self.reload_params:
+            self.repeat(10, UpdateParamsTask())
 
         self.strategy.before_loop()
 
@@ -97,7 +111,7 @@ class UpdateParamsTask:
         except FileNotFoundError:
             return
         except Exception:  # pragma: no cover - defensive
-            LOG.exception("Failed to load %s", self.PARAM_FILE)
+            LOG.exception("Failed to load %s", self.PARAMS_FILE)
             return
 
         if not isinstance(new_params, dict):

@@ -1,3 +1,5 @@
+import time
+
 from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
@@ -234,6 +236,41 @@ def test_a_backtest_may_read_a_fee_rate_but_gets_nothing_without_an_adapter(monk
     tracker = PnlTracker()
     assert tracker.register_fee(market) is None
     assert tracker.fee_rates == {}
+
+
+def _replay_with_params_file(tmp_path, monkeypatch, **trader_kwargs) -> BuyThenSell:
+    """A replay with a `params.json` beside it that differs from the strategy's.
+
+    The reload task runs on the wall clock, every 10 seconds; a replay of six
+    books takes milliseconds. Moving `tick_ts` an hour ahead makes the task due
+    at the first heartbeat, so whether it runs depends only on the flag.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "params.json").write_text('{"size": 99}')
+    future = time.time() + 3600
+    monkeypatch.setattr(Trader, "tick_ts", property(lambda self: future))
+
+    strategy = BuyThenSell()
+    trader = Trader(strategy, ReplayQueue(make_books(MIDS)), **trader_kwargs)
+    trader.run()
+    return strategy
+
+
+def test_a_trader_reloads_params_json_by_default(tmp_path, monkeypatch):
+    """What a live run relies on: change the file, and the strategy follows."""
+    strategy = _replay_with_params_file(tmp_path, monkeypatch)
+    assert strategy.params == {"size": 99}
+
+
+def test_a_trader_can_be_told_not_to_reload_params(tmp_path, monkeypatch):
+    """What a backtest relies on: the parameters it was built with are the ones it ran.
+
+    A sweep gives every run its own parameter set and keeps the env's
+    `params.json` beside them. Reloading would replace each run's set with the
+    file's partway through -- every run then reports one strategy.
+    """
+    strategy = _replay_with_params_file(tmp_path, monkeypatch, reload_params=False)
+    assert strategy.params == {"size": BuyThenSell.ORDER_SIZE}
 
 
 class _Collector:
