@@ -121,3 +121,4 @@ test_store
 
 # PyPI upload token for this project. Never commit.
 .pypirc
+.ruff_cache
