@@ -1,9 +1,8 @@
 """Reporters: the fan-out, and that a broken one cannot take a run down.
 
-The isolation is the part worth holding. A reporter is an observer -- nothing about
-a trading decision depends on anyone being told -- so a closed socket or a failing
-webhook must log and be ignored. That is the opposite of the fail-fast rule
-everywhere else in this library, and deliberately so.
+Event dispatch isolates ordinary handler failures so one unreachable reporter
+cannot prevent another from recording the same outcome. Reporter lifecycle hooks
+remain fail-fast.
 """
 
 from qate.core.ev_type import EventType
@@ -109,7 +108,8 @@ def test_a_fill_reaches_every_reporter(tmp_path, monkeypatch):
     run = runtime(tmp_path, monkeypatch, a, b)
 
     response = fill()
-    run.handle_order(response)
+    run.put(EventType.ORDER_FILLED, response)
+    run._next()
 
     assert a.kinds == ["report_order"]
     assert b.kinds == ["report_order"]
@@ -120,10 +120,12 @@ def test_a_close_reports_the_update(tmp_path, monkeypatch):
     recorder = Recorder()
     run = runtime(tmp_path, monkeypatch, recorder)
 
-    run.handle_pnl_update(pnl(SettleType.OPEN))
+    run.put(EventType.TRADING_PNL_UPDATE, pnl(SettleType.OPEN))
+    run._next()
     assert recorder.kinds == ["report_pnl"]
 
-    run.handle_pnl_update(pnl(SettleType.CLOSE))
+    run.put(EventType.TRADING_PNL_UPDATE, pnl(SettleType.CLOSE))
+    run._next()
     assert recorder.kinds == ["report_pnl", "report_pnl"]
 
 
@@ -144,8 +146,10 @@ def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
     good = Recorder()
     run = runtime(tmp_path, monkeypatch, Exploding(), good)
 
-    run.handle_order(fill())
-    run.handle_pnl_update(pnl(SettleType.CLOSE))
+    run.put(EventType.ORDER_FILLED, fill())
+    run._next()
+    run.put(EventType.TRADING_PNL_UPDATE, pnl(SettleType.CLOSE))
+    run._next()
 
     # The working reporter still saw everything, in order.
     assert good.kinds == ["report_order", "report_pnl"]
@@ -154,5 +158,7 @@ def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
 def test_a_reporter_that_overrides_nothing_is_harmless(tmp_path, monkeypatch):
     """Every hook is a no-op, so a reporter implements only what it cares about."""
     run = runtime(tmp_path, monkeypatch, Reporter())
-    run.handle_order(fill())
-    run.handle_pnl_update(pnl(SettleType.CLOSE))
+    run.put(EventType.ORDER_FILLED, fill())
+    run._next()
+    run.put(EventType.TRADING_PNL_UPDATE, pnl(SettleType.CLOSE))
+    run._next()

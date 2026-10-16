@@ -85,7 +85,13 @@ class EventLoop(StatusFeed, threading.Thread):
             (event_type, event) = item
             if event_type in self.handlers:
                 for handler in self.handlers[event_type]:
-                    handler(event)
+                    try:
+                        handler(event)
+                    except (EventLoopExit, FatalException):
+                        raise
+                    except Exception as error:
+                        LOG.exception("%s handler %r failed for %s", self.__class__.__name__, handler, event_type)
+                        self.publish_status(EventType.EXCEPTION, error)
         except queue.Empty:
             pass
 
