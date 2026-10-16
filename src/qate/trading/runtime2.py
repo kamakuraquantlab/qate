@@ -66,16 +66,11 @@ class Runtime2(EventLoop):
     def __init__(self):
         super().__init__(None, heartbeat_interval=5)
         self.register(EventType.EV_LOOP_EXIT, self.handle_exit)
-        self.register(EVENT_CREATE_ORDER, self.handle_create_order)
-        self.register(EVENT_CANCEL_ORDER, self.handle_cancel_order)
-        for event_type in ORDER_RESPONSE_EVENTS:
-            self.register(event_type, partial(self.handle_order_response, event_type))
 
         self.conns: list[Connection] = []
         self.gateways: list[QueuedGateway] = []
         self.traders: list[Trader] = []
         self.reporters: list[Reporter] = []
-        self._order_owners: dict[int, _Gateway] = {}
 
         self.should_exit = False
 
@@ -127,8 +122,22 @@ class Runtime2(EventLoop):
         if event_type in TERMINAL_ORDER_EVENTS:
             del self._order_owners[request_key]
 
-    def before_loop(self):
-        # setup
+    def setup_single(self):
+        trader = self.traders[0]
+        for conn in self.conns:
+            if isinstance(conn, MarketDataFeed):
+                trader.subscribe_market_data_feed(conn)
+        for gateway in self.gateways:
+            trader.add_gateway(gateway)
+
+    def setup_multi(self):
+        # enable order routing
+        self._order_owners: dict[int, _Gateway] = {}
+        self.register(EVENT_CREATE_ORDER, self.handle_create_order)
+        self.register(EVENT_CANCEL_ORDER, self.handle_cancel_order)
+        for event_type in ORDER_RESPONSE_EVENTS:
+            self.register(event_type, partial(self.handle_order_response, event_type))
+
         for conn in self.conns:
             if isinstance(conn, MarketDataFeed):
                 for trader in self.traders:
@@ -136,6 +145,13 @@ class Runtime2(EventLoop):
         for gateway in self.gateways:
             for trader in self.traders:
                 trader.add_gateway(_Gateway(gateway, self))
+
+    def before_loop(self):
+        # setup
+        if len(self.traders) == 1:
+            self.setup_single()
+        elif len(self.traders) > 1:
+            self.setup_multi()
 
         # start
         for reporter in self.reporters:

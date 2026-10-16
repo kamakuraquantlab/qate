@@ -52,6 +52,7 @@ def proxies():
     runtime = Runtime2()
     gateway = Gateway()
     gateway.add_order_listener(runtime.event_queue)
+    runtime.setup_multi()
     return runtime, gateway, _Gateway(gateway, runtime), _Gateway(gateway, runtime)
 
 

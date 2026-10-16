@@ -16,26 +16,23 @@ class Runtime(EventLoop):
     def __init__(self, strategy: Strategy):
         super().__init__(None, heartbeat_interval=5)
         self.trader = Trader(strategy)
-        self.trader.add_status_listener(self.event_queue)
-        self.gateways: list[QueuedGateway] = []
-        self.reporters: list[Reporter] = []
 
         self.register(EventType.EV_LOOP_EXIT, self.handle_exit)
 
+        self.gateways: list[QueuedGateway] = []
+        self.reporters: list[Reporter] = []
         self.conns: list[Connection] = []
+
         self.should_exit = False
 
     def add_conn(self, conn: Connection):
         self.conns.append(conn)
         conn.add_status_listener(self.event_queue)
-        if isinstance(conn, MarketDataFeed):
-            self.trader.subscribe_market_data_feed(conn)
 
     def add_gateway(self, gateway: QueuedGateway):
+        self.gateways.append(gateway)
         gateway.add_order_listener(self.event_queue)
         gateway.add_status_listener(self.event_queue)
-        self.gateways.append(gateway)
-        self.trader.add_gateway(gateway)
 
     def add_reporter(self, reporter: Reporter):
         self.reporters.append(reporter)
@@ -47,6 +44,15 @@ class Runtime(EventLoop):
         self.register(EventType.TRADING_PNL_UPDATE, reporter.report_pnl)
 
     def before_loop(self):
+        # setup
+        self.trader.add_status_listener(self.event_queue)
+        for conn in self.conns:
+            if isinstance(conn, MarketDataFeed):
+                self.trader.subscribe_market_data_feed(conn)
+        for gateway in self.gateways:
+            self.trader.add_gateway(gateway)
+
+        # start
         for reporter in self.reporters:
             LOG.info(f"reporter {reporter.__class__.__name__} start")
             reporter.start()
