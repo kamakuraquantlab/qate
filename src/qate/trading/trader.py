@@ -25,8 +25,7 @@ class Trader(EventLoop):
     point in the replay, which is worse than at the start.
     """
 
-    def __init__(self, strategy: Strategy, event_queue: EventQueue = None,
-                 reload_params: bool = True):
+    def __init__(self, strategy: Strategy, event_queue: EventQueue = None, reload_params: bool = True):
         super(Trader, self).__init__(event_queue)
         self.strategy = strategy
         self.has_gateway = False
