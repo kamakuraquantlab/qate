@@ -71,9 +71,6 @@ class Strategy(StatusFeed, Generic[C]):
         elif order_response.error == OrderError.CANCEL:
             raise StopTradingException("Order cancel failure")
 
-    def handle_msg(self, msg: str):
-        pass
-
     def before_loop(self):
         pass
 

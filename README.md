@@ -137,7 +137,7 @@ runtime.add_reporter(Printer())
 ```
 
 The interface is `start`, `stop`, `report_order`, `report_metrics`, `report_pnl`,
-`report_exception`, and `report_message`. Every method is a no-op by default, so
+and `report_exception`. Every method is a no-op by default, so
 implement only what the destination needs. Several reporters can be added and each
 sees everything. A reporter that raises is logged and ignored: a run does not
 depend on anyone being told.

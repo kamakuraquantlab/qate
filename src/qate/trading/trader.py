@@ -58,7 +58,6 @@ class Trader(EventLoop):
             self.register(EventType.ORDER_FILLED, self.strategy.handle_order_filled)
             self.register(EventType.ORDER_ERROR, self.strategy.handle_order_error)
 
-        self.register(EventType.MSG_IN, self.strategy.handle_msg)
         self.register(EventType.TRADING_STOP, self.strategy.handle_stop)
 
         if self.reload_params:
@@ -68,9 +67,6 @@ class Trader(EventLoop):
 
     def after_loop(self):
         self.strategy.after_loop()
-
-    def notify(self, msg: str):
-        self.put(EventType.MSG_IN, msg)
 
     def stop(self):
         self.put(EventType.TRADING_STOP, None)

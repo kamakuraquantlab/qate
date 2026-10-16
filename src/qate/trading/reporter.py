@@ -22,6 +22,3 @@ class Reporter(StatusFeed):
 
     def report_exception(self, error: BaseException) -> None:
         """Something failed. Worth routing somewhere noisier than the rest."""
-
-    def report_message(self, message: str) -> None:
-        """Free text a strategy asked to be passed on."""

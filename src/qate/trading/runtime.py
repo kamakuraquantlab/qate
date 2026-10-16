@@ -24,8 +24,6 @@ class Runtime(EventLoop):
 
         self.register(EventType.EV_LOOP_EXIT, self.handle_exit)
         self.register(EventType.EXCEPTION, self.handle_reportable_exception)
-        self.register(EventType.MSG_OUT, self.handle_outgoing_message)
-        self.register(EventType.MSG_IN, self.trader.notify)
         self.register(EventType.ORDER_FILLED, self.handle_order)
         self.register(EventType.METRICS, self.handle_metrics)
         self.register(EventType.TRADING_PNL_UPDATE, self.handle_pnl_update)
@@ -93,9 +91,6 @@ class Runtime(EventLoop):
 
     def handle_reportable_exception(self, error: BaseException):
         self._report("report_exception", error)
-
-    def handle_outgoing_message(self, message: str):
-        self._report("report_message", message)
 
     def handle_exit(self, ev_loop: EventLoop):
         if self.should_exit:

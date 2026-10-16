@@ -42,9 +42,6 @@ class Recorder(Reporter):
     def report_exception(self, error):
         self.calls.append(("report_exception", error))
 
-    def report_message(self, message):
-        self.calls.append(("report_message", message))
-
     @property
     def kinds(self) -> list[str]:
         return [c[0] for c in self.calls]
@@ -130,27 +127,16 @@ def test_a_close_reports_the_update(tmp_path, monkeypatch):
     assert recorder.kinds == ["report_pnl", "report_pnl"]
 
 
-def test_an_open_reports_no_summary(tmp_path, monkeypatch):
-    """A summary is the running total after a position closed, not on every event."""
-    recorder = Recorder()
-    run = runtime(tmp_path, monkeypatch, recorder)
-    run.handle_pnl_update(pnl(SettleType.OPEN))
-    assert "report_message" not in recorder.kinds
-
-
-def test_exceptions_and_messages_are_reported(tmp_path, monkeypatch):
+def test_exceptions_are_reported(tmp_path, monkeypatch):
     recorder = Recorder()
     run = runtime(tmp_path, monkeypatch, recorder)
 
     error = RuntimeError("something broke")
     run.put(EventType.EXCEPTION, error)
-    run.put(EventType.MSG_OUT, "hello")
-    for _ in range(2):
-        run._next()
+    run._next()
 
-    assert recorder.kinds == ["report_exception", "report_message"]
+    assert recorder.kinds == ["report_exception"]
     assert recorder.calls[0][1] is error
-    assert recorder.calls[1][1] == "hello"
 
 
 def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
@@ -170,23 +156,3 @@ def test_a_reporter_that_overrides_nothing_is_harmless(tmp_path, monkeypatch):
     run = runtime(tmp_path, monkeypatch, Reporter())
     run.handle_order(fill())
     run.handle_pnl_update(pnl(SettleType.CLOSE))
-
-
-def test_a_reporter_can_send_messages_back_to_the_strategy(tmp_path, monkeypatch):
-    """A bidirectional reporter -- a chat bot taking commands -- still works."""
-    received: list = []
-
-    class Listening(Strategy):
-        def handle_msg(self, msg):
-            received.append(msg)
-
-    monkeypatch.chdir(tmp_path)
-    run = Runtime(Listening())
-    reporter = Recorder()
-    run.add_reporter(reporter)
-
-    reporter.publish_status(EventType.MSG_IN, "status?")
-    run._next()
-
-    # Runtime routes MSG_IN to the trader, which passes it to the strategy.
-    assert run.trader.event_queue.get(timeout=0.1) == (EventType.MSG_IN, "status?")
