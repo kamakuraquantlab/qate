@@ -16,6 +16,7 @@ class Runtime(EventLoop):
     def __init__(self, strategy: Strategy):
         super().__init__(None, heartbeat_interval=5)
         self.trader = Trader(strategy)
+        self.trader.add_status_listener(self.event_queue)
 
         self.register(EventType.EV_LOOP_EXIT, self.handle_exit)
 
@@ -45,7 +46,6 @@ class Runtime(EventLoop):
 
     def before_loop(self):
         # setup
-        self.trader.add_status_listener(self.event_queue)
         for conn in self.conns:
             if isinstance(conn, MarketDataFeed):
                 self.trader.subscribe_market_data_feed(conn)
