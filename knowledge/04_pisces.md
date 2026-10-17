@@ -139,7 +139,8 @@ this amount; when total requested exceeds available JPY, the pool is split propo
 `min_jpy_to_keep` is deducted from the actual exchange balance before any allocation is computed.
 Use it to protect JPY used by other strategies running on the same exchange account.
 
-Params come from `param_grid.json`, and are what an optimize sweep varies:
+Params come from the runner: K2 uses a strategy-instance file and Enoshima uses
+`strategy_param_grid.json`. They are what an optimize sweep varies:
 
 | Field | Default | Meaning |
 |---|---|---|

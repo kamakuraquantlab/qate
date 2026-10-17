@@ -6,7 +6,7 @@ from qate.core.gateway import ExchangeGateway
 from qate.core.model import ExchangeName, Market, SettleType, Side
 from qate.core.order import OrderRequest, OrderResponse, OrderState
 from qate.core.symbol import Symbol
-from qate.trading.runtime2 import Runtime2, _Gateway
+from qate.trading.runtime2 import Runtime2, StrategyEvent, _Gateway
 
 
 class Gateway(ExchangeGateway):
@@ -53,7 +53,7 @@ def proxies():
     gateway = Gateway()
     gateway.add_order_listener(runtime.event_queue)
     runtime.setup_multi()
-    return runtime, gateway, _Gateway(gateway, runtime), _Gateway(gateway, runtime)
+    return runtime, gateway, _Gateway(gateway, runtime, "a"), _Gateway(gateway, runtime, "b")
 
 
 def test_runtime_submits_then_routes_a_response_only_to_the_owning_trader():
@@ -116,3 +116,25 @@ def test_order_updates_are_routed_without_releasing_ownership():
 
     assert events.items[0][0] == EventType.ORDER_UPDATED
     assert runtime._order_owners[id(order_request)] is proxy
+
+
+def test_a_filled_order_is_reported_with_its_instance_key():
+    runtime, gateway, proxy, _ = proxies()
+    reported = []
+    runtime.register("RUNTIME_INSTANCE_ORDER_FILLED", reported.append)
+    order_request = request()
+    runtime.handle_create_order((proxy, order_request))
+
+    response = OrderResponse(order_request, state=OrderState.FILLED)
+    runtime.handle_order_response(EventType.ORDER_FILLED, response)
+    runtime._next()
+
+    assert reported == [StrategyEvent("a", response)]
+
+
+def test_duplicate_strategy_instance_keys_are_rejected():
+    runtime = Runtime2()
+    runtime.add_strategy(type("S", (), {})(), "same")
+
+    with pytest.raises(ValueError, match="Duplicate strategy instance key"):
+        runtime.add_strategy(type("S", (), {})(), "same")

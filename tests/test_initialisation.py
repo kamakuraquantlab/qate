@@ -58,7 +58,7 @@ def init_counts(monkeypatch):
 
 CASES = [
     ("Strategy", lambda: Strategy(), [feed.StatusFeed]),
-    ("Reporter", lambda: Reporter(), [feed.StatusFeed]),
+    ("Reporter", lambda: Reporter(), []),
     ("Trader", lambda: Trader(Strategy()), [feed.StatusFeed]),
     ("QueuedGateway", lambda: QueuedGateway(FakeApi()), [feed.StatusFeed, feed.OrderFeed]),
     ("DefaultGateway", lambda: DefaultGateway(FakeApi()), [feed.StatusFeed, feed.OrderFeed]),

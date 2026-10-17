@@ -1,9 +1,13 @@
-from qate.core.feed import StatusFeed
 from qate.core.order import OrderResponse
 
 
-class Reporter(StatusFeed):
-    """A destination for a run's outcomes. Override the hooks you want."""
+class Reporter:
+    """A destination for a run's outcomes. Override the hooks you want.
+
+    ``Runtime`` passes each outcome directly. ``Runtime2`` passes a
+    :class:`qate.trading.runtime2.StrategyEvent` so a shared reporter can retain
+    the strategy instance that produced it.
+    """
 
     def start(self) -> None:
         """Open the destination and report that the run started."""

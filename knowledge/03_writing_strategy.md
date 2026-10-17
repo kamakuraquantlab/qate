@@ -48,10 +48,11 @@ class Variant(Strategy[Config]):
 The constructor takes exactly two arguments, and the split between them matters:
 
 - **`config`** — an instance of the `Config` in your `config.py`, loaded from
-  `config.json`. This is what makes a run *a different run*: a market, an order
+  `strategy_config.json`. This is what makes a run *a different run*: a market, an order
   size, which venues.
-- **`params`** — a plain `dict`, loaded from `param_grid.json`. This is what an
-  optimize sweep varies.
+- **`params`** — a plain `dict`. K2 loads it from one
+  `strategy_instance_*.json`; Enoshima takes defaults or combinations from
+  `strategy_param_grid.json`.
 
 Put a tunable in `config` and it cannot be swept. Put a market in `params` and
 every combination reloads the data. See [02_env.md §5](02_env.md#5-config-discovery) for
@@ -85,37 +86,15 @@ self-contained. Shared helpers go in `config.py` or a module beside it; do not
 refactor variants into each other, because that is how editing v3 silently changes
 what v1 meant.
 
-## 5 TradingProfile
+## 5 Deployment files
 
-`qate_env.trading_env.TradingProfile` ties an environment to a variant at runtime,
-loaded from `trading.json`. It is `qate-env`'s class rather than `qate`'s — a
-strategy never reads it, a runner does — and it is here because it is the other half
-of the layout above:
+The runner owns the files that select a strategy. K2 names each live instance in
+`strategy_instance_<key>.json`; Enoshima names its one module and variant in
+`strategy_param_grid.json`. Both resolve `Config` from
+`<strategy_module>.config.Config` and load `strategy_config.json` into it.
 
-```python
-@dataclass
-class TradingProfile:
-    strategy_module_name: str   # e.g. "qate.strategy.pisces", or "my_strategy"
-    variant: str = "v0"         # file name without .py
-    trading_config_key: str = "DEFAULT"
-    reporter_config_key: str | None = None
-```
-
-`reporter_config_key` names the credentials a runner should build a
-[`Reporter`](../src/qate/trading/reporter.py) from — leave it out for a backtest,
-which reports to nobody. `qate` itself never reads it; the runner does.
-
-`strategy_name` returns `"{module}.{variant}"`, which is what appears in run logs
-and in the partition path of a result. `strategy_module_name` is also how
-`load_trading_env` finds your `Config` class, which is why the `config.py` layout
-above is a contract rather than a suggestion.
-
-Which *gateway* a run uses is not here. That is a property of the process doing the
-running — a live runner passes `GatewayName.PROD` to `qate_env`'s `Configurator`, a
-backtest simulates — not of the environment. It used to be a profile field, which meant half
-its readers ignored it and it went stale. `PROD` needs an exchange adapter
-installed; without one it raises, naming what is registered. That is deliberate —
-see [../AGENTS.md](../AGENTS.md).
+Gateway mode and credential keys are runner concerns. They never enter a
+strategy's config and `qate` never reads them.
 
 ## 6 Worked examples
 

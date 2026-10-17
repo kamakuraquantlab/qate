@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
 
@@ -7,7 +8,6 @@ from qate.core.ev_type import EventType
 from qate.core.feed import MarketDataFeed, OrderFeed
 from qate.core.gateway import ExchangeGateway
 from qate.core.order import OrderRequest, OrderResponse
-from qate.trading.gateways.queued import QueuedGateway
 from qate.trading.reporter import Reporter
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
@@ -16,6 +16,7 @@ LOG = getLogger(__name__)
 
 EVENT_CREATE_ORDER = "RUNTIME_CREATE_ORDER"
 EVENT_CANCEL_ORDER = "RUNTIME_CANCEL_ORDER"
+EVENT_INSTANCE_ORDER_FILLED = "RUNTIME_INSTANCE_ORDER_FILLED"
 
 ORDER_RESPONSE_EVENTS = (
     EventType.ORDER_CREATED,
@@ -27,13 +28,38 @@ ORDER_RESPONSE_EVENTS = (
 TERMINAL_ORDER_EVENTS = frozenset((EventType.ORDER_FILLED, EventType.ORDER_CANCELLED, EventType.ORDER_ERROR))
 
 
+@dataclass(frozen=True)
+class StrategyEvent:
+    """An outcome attributed to one strategy instance in a shared runtime."""
+
+    instance_key: str | None
+    value: object
+
+
+class _StatusSink:
+    def __init__(self, runtime: "Runtime2", instance_key: str | None):
+        self.runtime = runtime
+        self.instance_key = instance_key
+
+    def put(self, item):
+        if not item:
+            self.runtime.event_queue.put(item)
+            return
+        event_type, event = item
+        if event_type == EventType.EV_LOOP_EXIT:
+            self.runtime.event_queue.put(item)
+            return
+        self.runtime.event_queue.put((event_type, StrategyEvent(self.instance_key, event)))
+
+
 class _Gateway(ExchangeGateway):
     """One trader's view of a gateway shared by several traders."""
 
-    def __init__(self, gateway: QueuedGateway, runtime: "Runtime2"):
+    def __init__(self, gateway: ExchangeGateway, runtime: "Runtime2", instance_key: str):
         OrderFeed.__init__(self)
         self.shared_gateway = gateway
         self.runtime = runtime
+        self.instance_key = instance_key
 
     @property
     def exchange_name(self):
@@ -68,32 +94,37 @@ class Runtime2(EventLoop):
         self.register(EventType.EV_LOOP_EXIT, self.handle_exit)
 
         self.conns: list[Connection] = []
-        self.gateways: list[QueuedGateway] = []
+        self.gateways: list[ExchangeGateway] = []
         self.traders: list[Trader] = []
+        self._instance_keys: dict[Trader, str] = {}
         self.reporters: list[Reporter] = []
 
         self.should_exit = False
 
     def add_conn(self, conn: Connection):
         self.conns.append(conn)
-        conn.add_status_listener(self.event_queue)
+        conn.add_status_listener(_StatusSink(self, None))
 
-    def add_gateway(self, gateway: QueuedGateway):
+    def add_gateway(self, gateway: ExchangeGateway):
         self.gateways.append(gateway)
         gateway.add_order_listener(self.event_queue)
-        gateway.add_status_listener(self.event_queue)
+        if isinstance(gateway, EventLoop):
+            gateway.add_status_listener(_StatusSink(self, None))
 
-    def add_strategy(self, strategy: Strategy):
+    def add_strategy(self, strategy: Strategy, instance_key: str | None = None):
+        instance_key = instance_key or f"{strategy.__class__.__module__}.{strategy.__class__.__name__}"
+        if instance_key in self._instance_keys.values():
+            raise ValueError(f"Duplicate strategy instance key: {instance_key}")
         trader = Trader(strategy, reload_params=False)
         self.traders.append(trader)
-        trader.add_status_listener(self.event_queue)
+        self._instance_keys[trader] = instance_key
+        trader.add_status_listener(_StatusSink(self, instance_key))
 
     def add_reporter(self, reporter: Reporter):
         self.reporters.append(reporter)
-        reporter.add_status_listener(self.event_queue)
 
         self.register(EventType.EXCEPTION, reporter.report_exception)
-        self.register(EventType.ORDER_FILLED, reporter.report_order)
+        self.register(EVENT_INSTANCE_ORDER_FILLED, reporter.report_order)
         self.register(EventType.METRICS, reporter.report_metrics)
         self.register(EventType.TRADING_PNL_UPDATE, reporter.report_pnl)
 
@@ -119,16 +150,10 @@ class Runtime2(EventLoop):
         request_key = id(order_response.order_request)
         gateway = self._order_owners[request_key]
         gateway.publish_order_response(event_type, order_response)
+        if event_type == EventType.ORDER_FILLED:
+            self.put(EVENT_INSTANCE_ORDER_FILLED, StrategyEvent(gateway.instance_key, order_response))
         if event_type in TERMINAL_ORDER_EVENTS:
             del self._order_owners[request_key]
-
-    def setup_single(self):
-        trader = self.traders[0]
-        for conn in self.conns:
-            if isinstance(conn, MarketDataFeed):
-                trader.subscribe_market_data_feed(conn)
-        for gateway in self.gateways:
-            trader.add_gateway(gateway)
 
     def setup_multi(self):
         # enable order routing
@@ -144,13 +169,11 @@ class Runtime2(EventLoop):
                     trader.subscribe_market_data_feed(conn)
         for gateway in self.gateways:
             for trader in self.traders:
-                trader.add_gateway(_Gateway(gateway, self))
+                trader.add_gateway(_Gateway(gateway, self, self._instance_keys[trader]))
 
     def before_loop(self):
         # setup
-        if len(self.traders) == 1:
-            self.setup_single()
-        elif len(self.traders) > 1:
+        if self.traders:
             self.setup_multi()
 
         # start
@@ -162,7 +185,8 @@ class Runtime2(EventLoop):
             trader.start()
         for gateway in self.gateways:
             LOG.info(f"gateway {gateway.__class__.__name__} {gateway.exchange_name.name} start")
-            gateway.start()
+            if isinstance(gateway, EventLoop):
+                gateway.start()
         for conn in self.conns:
             conn.connect()
 
@@ -194,7 +218,8 @@ class Runtime2(EventLoop):
 
             for gateway in self.gateways:
                 LOG.info(f"stop gateway {gateway.__class__.__name__} {gateway.exchange_name.name}")
-                gateway.stop()
-                gateway.join(timeout=5.0)
+                if isinstance(gateway, EventLoop):
+                    gateway.stop()
+                    gateway.join(timeout=5.0)
         finally:
             super().stop()

@@ -37,7 +37,6 @@ class Runtime(EventLoop):
 
     def add_reporter(self, reporter: Reporter):
         self.reporters.append(reporter)
-        reporter.add_status_listener(self.event_queue)
 
         self.register(EventType.EXCEPTION, reporter.report_exception)
         self.register(EventType.ORDER_FILLED, reporter.report_order)
