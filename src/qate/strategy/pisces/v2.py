@@ -344,14 +344,12 @@ class Variant(Strategy[Config]):
         self._place_orders(pair)
 
     def handle_order_created(self, order_response: OrderResponse):
-        super().handle_order_created(order_response)
         ctx_id = order_response.order_request.ctx_id
         pair = self._order_to_pair.get(ctx_id)
         if pair and order_response.order_request.order_type == OrderType.MAKER:
             pair.maker_orders[ctx_id].response = order_response
 
     def handle_order_cancelled(self, order_response: OrderResponse):
-        super().handle_order_cancelled(order_response)
         ctx_id = order_response.order_request.ctx_id
         pair = self._order_to_pair.pop(ctx_id, None)
         if pair:
@@ -359,25 +357,22 @@ class Variant(Strategy[Config]):
             del pair.maker_orders[ctx_id]
 
     def handle_order_filled(self, order_response: OrderResponse):
-        super().handle_order_filled(order_response)
         ctx_id = order_response.order_request.ctx_id
         pair = self._order_to_pair.pop(ctx_id, None)
         if pair is None:
             return
         if order_response.order_request.order_type == OrderType.MAKER:
-            self._on_maker_filled(pair, order_response)
-        else:
-            self._on_taker_filled(pair, order_response)
+            return self._on_maker_filled(pair, order_response)
+        return self._on_taker_filled(pair, order_response)
 
     def _on_taker_filled(self, pair: PairState, order_response: OrderResponse):
         pair.taker.inventory.release(order_response.order_request)
         pnl_update = pair.taker.inventory.process_order(order_response)
-        self.publish_pnl_update(pnl_update)
+        return pnl_update
 
     def _on_maker_filled(self, pair: PairState, order_response: OrderResponse):
         pair.maker.inventory.release(order_response.order_request)
         pnl_update = pair.maker.inventory.process_order(order_response)
-        self.publish_pnl_update(pnl_update)
 
         ctx_id = order_response.order_request.ctx_id
         if ctx_id in pair.maker_orders:
@@ -385,7 +380,7 @@ class Variant(Strategy[Config]):
 
         if order_response.exec_size < pair.taker.symbol_def.size_unit:
             LOG.info(f"Ignore small exec_size {order_response.exec_size:.6f} < {pair.taker.symbol_def.size_unit}")
-            return
+            return pnl_update
 
         if order_response.order_request.side == Side.SELL:
             taker_req = pair.taker.buy(self.now_ts, order_response.exec_size, SettleType.CLOSE)
@@ -393,3 +388,4 @@ class Variant(Strategy[Config]):
             taker_req = pair.taker.sell(self.now_ts, order_response.exec_size, SettleType.CLOSE)
 
         self._order_to_pair[taker_req.ctx_id] = pair
+        return pnl_update

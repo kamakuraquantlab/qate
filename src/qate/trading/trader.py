@@ -52,10 +52,10 @@ class Trader(EventLoop):
         self.register(EventType.MARKET_BAR, self.strategy.handle_bar)
 
         if self.has_gateway:
-            self.register(EventType.ORDER_CREATED, self.strategy.handle_order_created)
-            self.register(EventType.ORDER_CANCELLED, self.strategy.handle_order_cancelled)
-            self.register(EventType.ORDER_FILLED, self.strategy.handle_order_filled)
-            self.register(EventType.ORDER_ERROR, self.strategy.handle_order_error)
+            self.register(EventType.ORDER_CREATED, self.strategy._order_created)
+            self.register(EventType.ORDER_CANCELLED, self.strategy._order_cancelled)
+            self.register(EventType.ORDER_FILLED, self.strategy._order_filled)
+            self.register(EventType.ORDER_ERROR, self.strategy._order_error)
 
         self.register(EventType.TRADING_STOP, self.strategy.handle_stop)
 

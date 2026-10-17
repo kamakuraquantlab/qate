@@ -104,7 +104,6 @@ class Variant(Strategy[Config]):
         self.gateways[p.instruction.exchange].cancel(request)
 
     def handle_order_created(self, order_response: OrderResponse):
-        super().handle_order_created(order_response)
         ctx_id = order_response.order_request.ctx_id
         for p in self.pending:
             if p.ctx_id == ctx_id:
@@ -115,7 +114,6 @@ class Variant(Strategy[Config]):
                 break
 
     def handle_order_filled(self, order_response: OrderResponse):
-        super().handle_order_filled(order_response)
         ctx_id = order_response.order_request.ctx_id
         for p in self.pending:
             if p.ctx_id == ctx_id:
@@ -130,7 +128,6 @@ class Variant(Strategy[Config]):
         self._check_all_done()
 
     def handle_order_cancelled(self, order_response: OrderResponse):
-        super().handle_order_cancelled(order_response)
         ctx_id = order_response.order_request.ctx_id
         for p in self.pending:
             if p.ctx_id == ctx_id:
@@ -148,7 +145,6 @@ class Variant(Strategy[Config]):
                 break
 
     def handle_order_error(self, order_response: OrderResponse):
-        super().handle_order_error(order_response)
         ctx_id = order_response.order_request.ctx_id
         for p in self.pending:
             if p.ctx_id == ctx_id:

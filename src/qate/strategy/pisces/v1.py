@@ -348,25 +348,20 @@ class Variant(Strategy[Config]):
         return maker_age < 1.0 and taker_age < 1.0
 
     def handle_order_created(self, order_response: OrderResponse):
-        super().handle_order_created(order_response)
         if order_response.order_request.order_type == OrderType.MAKER:
             entry = self.maker_orders[order_response.order_request.ctx_id]
             entry.response = order_response
 
     def handle_order_cancelled(self, order_response: OrderResponse):
-        super().handle_order_cancelled(order_response)
         self.maker.inventory.release(order_response.order_request)
         del self.maker_orders[order_response.order_request.ctx_id]
 
     def handle_order_filled(self, order_response: OrderResponse):
-        super().handle_order_filled(order_response)
         if order_response.order_request.order_type == OrderType.MAKER:
-            self._on_maker_filled(order_response)
-        else:
-            self._on_taker_filled(order_response)
+            return self._on_maker_filled(order_response)
+        return self._on_taker_filled(order_response)
 
     def handle_order_error(self, order_response):
-        super().handle_order_error(order_response)
         if order_response.error == OrderError.CREATE:
             req = order_response.order_request
             if req.order_type == OrderType.MAKER:
@@ -383,12 +378,11 @@ class Variant(Strategy[Config]):
         self.taker.inventory.release(order_response.order_request)
         self._pending_taker.pop(order_response.order_request.ctx_id, None)
         pnl_update = self.taker.inventory.process_order(order_response)
-        self.publish_pnl_update(pnl_update)
+        return pnl_update
 
     def _on_maker_filled(self, order_response: OrderResponse):
         self.maker.inventory.release(order_response.order_request)
         pnl_update = self.maker.inventory.process_order(order_response)
-        self.publish_pnl_update(pnl_update)
 
         ctx_id = order_response.order_request.ctx_id
         if ctx_id in self.maker_orders:
@@ -396,10 +390,11 @@ class Variant(Strategy[Config]):
 
         if order_response.exec_size < self.taker.symbol_def.size_unit:
             LOG.info(f"Ignore small exec_size {order_response.exec_size:.6f} < {self.taker.symbol_def.size_unit}")
-            return
+            return pnl_update
 
         if order_response.order_request.side == Side.SELL:
             taker_req = self.taker.buy(self.now_ts, order_response.exec_size, SettleType.CLOSE)
         else:
             taker_req = self.taker.sell(self.now_ts, order_response.exec_size, SettleType.CLOSE)
         self._pending_taker[taker_req.ctx_id] = order_response
+        return pnl_update

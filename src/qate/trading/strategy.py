@@ -14,6 +14,7 @@ from qate.core.model import (
 from qate.core.order import OrderError, OrderResponse
 from qate.trading.exceptions import StopTradingException
 from qate.trading.metrics import FeedWriter
+from qate.trading.pnl_tracker import PnlUpdate
 
 LOG = getLogger(__name__)
 
@@ -46,18 +47,38 @@ class Strategy(StatusFeed, Generic[C]):
         pass
 
     def handle_order_created(self, order_response: OrderResponse):
+        pass
+
+    def handle_order_cancelled(self, order_response: OrderResponse):
+        pass
+
+    def handle_order_filled(self, order_response: OrderResponse) -> PnlUpdate | None:
+        pass
+
+    def handle_order_error(self, order_response: OrderResponse):
+        pass
+
+    def _order_created(self, order_response: OrderResponse):
         LOG.info(f"ORDER {order_response.summary}")
+        self.handle_order_created(order_response)
+
         if order_response.order_request.settle_type == SettleType.OPEN:
             self._open_order_failures = 0
 
-    def handle_order_cancelled(self, order_response: OrderResponse):
+    def _order_cancelled(self, order_response: OrderResponse):
         LOG.info(f"ORDER {order_response.summary}")
+        self.handle_order_cancelled(order_response)
 
-    def handle_order_filled(self, order_response: OrderResponse):
+    def _order_filled(self, order_response: OrderResponse):
         LOG.info(f"ORDER {order_response.summary}")
+        pnl_update = self.handle_order_filled(order_response)
+        if pnl_update is not None:
+            self.publish_status(EventType.TRADING_PNL_UPDATE, pnl_update)
 
-    def handle_order_error(self, order_response: OrderResponse):
+    def _order_error(self, order_response: OrderResponse):
         LOG.info(f"ORDER_ERROR {order_response.summary}")
+        self.handle_order_error(order_response)
+
         if order_response.error == OrderError.CREATE:
             order_request = order_response.order_request
             if order_request.settle_type == SettleType.CLOSE:
@@ -101,9 +122,6 @@ class Strategy(StatusFeed, Generic[C]):
         self.feed_writer.add(metric)
         if flush_now:
             self.feed_writer.flush()
-
-    def publish_pnl_update(self, pnl_update):
-        self.publish_status(EventType.TRADING_PNL_UPDATE, pnl_update)
 
     def handle_stop(self, _):
         raise EventLoopExit()

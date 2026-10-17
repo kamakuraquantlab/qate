@@ -42,7 +42,7 @@ class Variant(Strategy[Config]):
     def warmup_order_book(self, order_book): ...      # fill history, do not trade
     def handle_order_book(self, order_book): ...      # decide, place orders
     def handle_trade(self, trade): ...
-    def handle_order_filled(self, order_response): ...
+    def handle_order_filled(self, order_response): ...  # return PnlUpdate, or None
 ```
 
 The constructor takes exactly two arguments, and the split between them matters:
@@ -57,6 +57,11 @@ The constructor takes exactly two arguments, and the split between them matters:
 Put a tunable in `config` and it cannot be swept. Put a market in `params` and
 every combination reloads the data. See [02_env.md §5](02_env.md#5-config-discovery) for
 how the env loads both.
+
+Order lifecycle logging and failure bookkeeping are owned by `Strategy`; an
+override does not call `super()`. `handle_order_filled` returns the fill's
+`PnlUpdate`, or `None` when the strategy has no PnL to report. The framework
+publishes a non-`None` result exactly once.
 
 ## 3 The two rules that break a backtest silently
 

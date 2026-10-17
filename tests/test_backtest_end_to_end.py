@@ -71,7 +71,6 @@ class BuyThenSell(Strategy):
         )
 
     def handle_order_filled(self, order_response):
-        super().handle_order_filled(order_response)
         self.fills.append(order_response)
         self._in_flight = False
         self._next_side = Side.SELL if self._next_side == Side.BUY else None
