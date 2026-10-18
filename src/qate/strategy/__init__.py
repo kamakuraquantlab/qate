@@ -30,7 +30,7 @@ Enoshima is for.
 
 A backtest needs nothing beyond `qate`: point an environment's
 `strategy_module_name` at `qate.strategy.pisces` and replay. Note that
-`SimulatorGateway` reports unlimited balances, so `pisces`'s startup allocation
+`BacktestGateway` reports unlimited balances, so `pisces`'s startup allocation
 always sees case (a) and its rebalance paths are only exercised against a real
 account.
 

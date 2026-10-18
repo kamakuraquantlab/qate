@@ -220,7 +220,7 @@ Backtesting needs nothing but `qate`: point an environment's
 `maker_exchange` / `taker_exchange` pair with data on both sides works — BITBANK
 maker against COINCHECK taker on `BTC_SPOT` runs as it stands.
 
-One caveat. `SimulatorGateway` reports unlimited balances, so the startup
+One caveat. `BacktestGateway` reports unlimited balances, so the startup
 allocation always lands on case (a) and the rebalance paths in §6 are only ever
 exercised against a real account.
 

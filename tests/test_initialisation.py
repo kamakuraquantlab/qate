@@ -6,7 +6,7 @@ import pytest
 from qate.core import ev_loop, feed
 from qate.core.api import Api
 from qate.core.model import ExchangeName
-from qate.trading.gateways import DefaultGateway, QueuedGateway, SimulatorGateway
+from qate.trading.gateways import BacktestGateway, DefaultGateway, QueuedGateway, SimulatorGateway
 from qate.trading.reporter import Reporter
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
@@ -62,7 +62,8 @@ CASES = [
     ("Trader", lambda: Trader(Strategy()), [feed.StatusFeed]),
     ("QueuedGateway", lambda: QueuedGateway(FakeApi()), [feed.StatusFeed, feed.OrderFeed]),
     ("DefaultGateway", lambda: DefaultGateway(FakeApi()), [feed.StatusFeed, feed.OrderFeed]),
-    ("SimulatorGateway", lambda: SimulatorGateway(ExchangeName.GMO), [feed.OrderFeed]),
+    ("BacktestGateway", lambda: BacktestGateway(ExchangeName.GMO), [feed.OrderFeed]),
+    ("SimulatorGateway", lambda: SimulatorGateway(ExchangeName.GMO), [feed.StatusFeed, feed.OrderFeed]),
 ]
 
 

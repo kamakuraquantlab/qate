@@ -97,7 +97,7 @@ abstract base class cannot give.
   That file *is* the lesson; deleting it to make the example shorter would remove
   the only thing the example has that a tutorial does not.
 - **Keep them honest about what they need.** Backtesting works with `qate` alone;
-  trading live needs an adapter. `SimulatorGateway` reports unlimited balances, so
+  trading live needs an adapter. `BacktestGateway` and `SimulatorGateway` report unlimited balances, so
   pisces's rebalance paths only run against a real account, and the docs say so.
 - `tests/test_example_strategies.py` checks they still load, construct, and match
   the config and params tables in `knowledge/04_pisces.md`. Example code that no
@@ -131,13 +131,20 @@ abstract base class cannot give.
 - **Every `date=` partition is an Asia/Tokyo day**, 15:00–14:59 UTC, and the
   timestamps inside the files are UTC epochs. `DtRange.days` already produces
   these keys; do not convert.
-- **The simulator is a gateway, not a mode.** `SimulatorGateway` sits in
-  `qate.trading.gateways` beside the three live ones, and that placement is load
+- **The simulator is a gateway, not a mode.** `BacktestGateway` sits in
+  `qate.trading.gateways` beside the live ones, and that placement is load
   bearing: `ExchangeGateway` can only stay a plain interface for as long as one
   implementation of it has no thread and no queue. It had its own top-level package
   once, which is how the contract came to extend `EventLoop` in the first place —
   a backtest then had to hand the gateway a fake synchronous queue to get a fill
   computed inside the strategy's own call.
+- **Two simulated gateways, one matcher.** `OrderMatching` decides fills and
+  publishes nothing. `BacktestGateway` calls it inside the caller's own call, for a
+  replay. `SimulatorGateway` is a `QueuedGateway` that calls it on its own loop,
+  for paper trading against a live feed: books arrive on the feed's thread and
+  orders on each trader's, and a lock-free matcher shared between them could fill
+  and cancel one order at once. Do not make `BacktestGateway` thread-safe instead;
+  `handle_order_book` runs for every book of every sweep member.
 - **`ReplayQueue` stays here, and is the point of `qate.core.ev_q`.** Swapping the
   live `queue.Queue` for `qate.trading.replay.ReplayQueue` is the entire difference
   between trading and replaying, and it is what makes a backtest expressible with

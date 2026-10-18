@@ -91,14 +91,14 @@ live ones collapses the threading into a single loop, so the same `Trader`,
 `Strategy` and gateway code runs unchanged:
 
 ```python
-from qate.trading.gateways import SimulatorGateway
+from qate.trading.gateways import BacktestGateway
 from qate.trading.replay import ReplayQueue
 from qate.trading.trader import Trader
 
 # events: an iterable of (EventType, OrderBook | Trade), in timestamp order.
 # Where they come from is not qate's business — see above.
 
-gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)  # fills in place
+gateway = BacktestGateway(ExchangeName.GMO, slippage_rate=0.0)  # fills in place
 
 trader = Trader(strategy, ReplayQueue(events))              # market data + own events
 trader.add_gateway(gateway)

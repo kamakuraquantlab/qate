@@ -4,7 +4,7 @@ from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
-from qate.trading.gateways import SimulatorGateway
+from qate.trading.gateways import BacktestGateway
 from qate.trading.replay import ReplayQueue
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
@@ -93,7 +93,7 @@ def run_backtest(tmp_path) -> tuple[BuyThenSell, list]:
 
     # A strategy, a simulator standing in for GMO, and one thread.
     strategy = BuyThenSell()
-    gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
+    gateway = BacktestGateway(ExchangeName.GMO, slippage_rate=0.0)
 
     trader = Trader(strategy, ReplayQueue(events))
     trader.add_gateway(gateway)
@@ -142,7 +142,7 @@ def test_cancelling_an_already_filled_order_is_not_a_fault():
     It must not publish an order error either: `Strategy` treats a cancel error as
     grounds to stop trading, which would turn an unnecessary cancel into a halt.
     """
-    gateway = SimulatorGateway(ExchangeName.GMO, slippage_rate=0.0)
+    gateway = BacktestGateway(ExchangeName.GMO, slippage_rate=0.0)
 
     errors: list = []
     gateway.add_order_listener(_ErrorCollector(errors))
@@ -159,7 +159,7 @@ def test_cancelling_an_already_filled_order_is_not_a_fault():
     gateway.create(request)
     book = make_books([MIDS[0]])[0][1]
     gateway.handle_order_book(book)  # fills, and forgets the order
-    assert request.ctx_id not in gateway.orders
+    assert request.ctx_id not in gateway.matching.orders
 
     gateway.cancel(request)  # the race: must not raise
     assert not [e for e in errors if e[0] == EventType.ORDER_ERROR]
