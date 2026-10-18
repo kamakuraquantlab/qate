@@ -13,12 +13,21 @@ from qate.core.model import (
 )
 from qate.core.order import OrderError, OrderResponse
 from qate.trading.exceptions import StopTradingException
-from qate.trading.metrics import FeedWriter
 from qate.trading.pnl_tracker import PnlUpdate
+from qate.util.buffer import BufferedWriter
 
 LOG = getLogger(__name__)
 
 C = TypeVar("C")
+
+
+class _FeedWriter(BufferedWriter):
+    def __init__(self, status_feed: StatusFeed, threshold: int = 128):
+        super(_FeedWriter, self).__init__(threshold)
+        self.status_feed = status_feed
+
+    def write(self, buffer: list[Metric]) -> None:
+        self.status_feed.publish_status(EventType.METRICS, buffer)
 
 
 class Strategy(StatusFeed, Generic[C]):
@@ -32,7 +41,7 @@ class Strategy(StatusFeed, Generic[C]):
     def __init__(self, config: C = None, params: dict | None = None):
         super(Strategy, self).__init__()
         self._is_ready = False
-        self.feed_writer = FeedWriter(self)
+        self.feed_writer = _FeedWriter(self)
         self._open_order_failures = 0
         self.config: C = config
         self.params = params if params is not None else {}

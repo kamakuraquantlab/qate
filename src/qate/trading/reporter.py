@@ -1,3 +1,4 @@
+from qate.core.model import Metric
 from qate.core.order import OrderResponse
 
 
@@ -18,7 +19,7 @@ class Reporter:
     def report_order(self, order_response: OrderResponse) -> None:
         """An order was filled."""
 
-    def report_metrics(self, metrics: list) -> None:
+    def report_metrics(self, metrics: list[Metric]) -> None:
         """A batch of strategy metrics was emitted."""
 
     def report_pnl(self, pnl_update) -> None:
