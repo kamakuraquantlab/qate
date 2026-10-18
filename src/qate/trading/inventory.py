@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from qate.core.features import FEATURES, Feature
+from qate.core import features
 from qate.core.model import Market, SettleType, Side
 from qate.core.order import OrderRequest, OrderResponse
 from qate.trading.exceptions import StopTradingException
@@ -10,6 +10,7 @@ from .pnl_tracker import PnlTracker, PnlUpdate
 LOG = getLogger(__name__)
 EPSILON = 0.00001
 SLIPPAGE_FACTOR = 1.02  # Safety margin for resource checks
+DISABLE_INVENTORY_HEALTH_CHECK = "DISABLE_INVENTORY_HEALTH_CHECK"
 
 
 class Inventory:
@@ -28,7 +29,7 @@ class Inventory:
         return pnl_update
 
     def _health_check(self):
-        if not FEATURES.get(Feature.INVENTORY_HEALTH_CHECK):
+        if features.get(DISABLE_INVENTORY_HEALTH_CHECK):
             return
 
         net_pnl = self.tracker.net_realized
