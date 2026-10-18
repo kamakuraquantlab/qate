@@ -27,7 +27,7 @@ class _FeedWriter(BufferedWriter):
         self.status_feed = status_feed
 
     def write(self, buffer: list[Metric]) -> None:
-        self.status_feed.publish_status(EventType.METRICS, buffer)
+        self.status_feed.publish_status(EventType.TRADING_METRICS, buffer)
 
 
 class Strategy(StatusFeed, Generic[C]):
@@ -80,6 +80,7 @@ class Strategy(StatusFeed, Generic[C]):
 
     def _order_filled(self, order_response: OrderResponse):
         LOG.info(f"ORDER {order_response.summary}")
+        self.publish_status(EventType.TRADING_ORDER, order_response)
         pnl_update = self.handle_order_filled(order_response)
         if pnl_update is not None:
             LOG.info(

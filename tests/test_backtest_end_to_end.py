@@ -282,7 +282,7 @@ class _Collector:
         if data is None:
             return
         (event_type, event) = data
-        if event_type == EventType.METRICS:
+        if event_type == EventType.TRADING_METRICS:
             self.metrics.extend(event)
 
 

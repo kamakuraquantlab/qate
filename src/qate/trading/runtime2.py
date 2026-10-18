@@ -7,16 +7,14 @@ from qate.core.ev_loop import EventLoop
 from qate.core.ev_type import EventType
 from qate.core.feed import MarketDataFeed, OrderFeed
 from qate.core.gateway import ExchangeGateway
-from qate.core.order import OrderError, OrderRequest, OrderResponse
+from qate.core.model import ExchangeName
+from qate.core.order import OrderRequest, OrderResponse
 from qate.trading.reporter import Reporter
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
 
 LOG = getLogger(__name__)
 
-EVENT_CREATE_ORDER = "RUNTIME_CREATE_ORDER"
-EVENT_CANCEL_ORDER = "RUNTIME_CANCEL_ORDER"
-EVENT_INSTANCE_ORDER_FILLED = "RUNTIME_INSTANCE_ORDER_FILLED"
 
 ORDER_RESPONSE_EVENTS = (
     EventType.ORDER_CREATED,
@@ -25,7 +23,6 @@ ORDER_RESPONSE_EVENTS = (
     EventType.ORDER_CANCELLED,
     EventType.ORDER_ERROR,
 )
-TERMINAL_ORDER_EVENTS = frozenset((EventType.ORDER_FILLED, EventType.ORDER_CANCELLED, EventType.ORDER_ERROR))
 
 
 @dataclass(frozen=True)
@@ -66,10 +63,13 @@ class _Gateway(ExchangeGateway):
         return self.shared_gateway.exchange_name
 
     def create(self, order_request: OrderRequest) -> None:
-        self.runtime.put(EVENT_CREATE_ORDER, (self, order_request))
+        order_request.set_instance_key(self.instance_key)
+        self.shared_gateway.create(order_request)
 
     def cancel(self, order_request: OrderRequest) -> None:
-        self.runtime.put(EVENT_CANCEL_ORDER, (self, order_request))
+        if order_request.instance_key != self.instance_key:
+            raise ValueError("Trader cannot cancel an order it does not own")
+        self.shared_gateway.cancel(order_request)
 
     def __getattr__(self, name):
         # Adapters may add synchronous capabilities such as fetch_balance_sync.
@@ -103,13 +103,13 @@ class Runtime2(EventLoop):
 
     def add_conn(self, conn: Connection):
         self.conns.append(conn)
-        conn.add_status_listener(_StatusSink(self, None))
+        conn.add_status_listener(self.event_queue)
 
     def add_gateway(self, gateway: ExchangeGateway):
         self.gateways.append(gateway)
         gateway.add_order_listener(self.event_queue)
         if isinstance(gateway, EventLoop):
-            gateway.add_status_listener(_StatusSink(self, None))
+            gateway.add_status_listener(self.event_queue)
 
     def add_strategy(self, strategy: Strategy, instance_key: str | None = None):
         instance_key = instance_key or f"{strategy.__class__.__module__}.{strategy.__class__.__name__}"
@@ -124,44 +124,17 @@ class Runtime2(EventLoop):
         self.reporters.append(reporter)
 
         self.register(EventType.EXCEPTION, reporter.report_exception)
-        self.register(EVENT_INSTANCE_ORDER_FILLED, reporter.report_order)
-        self.register(EventType.METRICS, reporter.report_metrics)
+        self.register(EventType.TRADING_ORDER, reporter.report_order)
+        self.register(EventType.TRADING_METRICS, reporter.report_metrics)
         self.register(EventType.TRADING_PNL_UPDATE, reporter.report_pnl)
 
-    def handle_create_order(self, event: tuple[_Gateway, OrderRequest]) -> None:
-        gateway, order_request = event
-        request_key = id(order_request)
-        if request_key in self._order_owners:
-            raise ValueError("Order request has already been submitted")
-        self._order_owners[request_key] = gateway
-        try:
-            gateway.shared_gateway.create(order_request)
-        except BaseException:
-            del self._order_owners[request_key]
-            raise
-
-    def handle_cancel_order(self, event: tuple[_Gateway, OrderRequest]) -> None:
-        gateway, order_request = event
-        if self._order_owners[id(order_request)] is not gateway:
-            raise ValueError("Trader cannot cancel an order it does not own")
-        gateway.shared_gateway.cancel(order_request)
-
     def handle_order_response(self, event_type: str, order_response: OrderResponse) -> None:
-        request_key = id(order_response.order_request)
-        gateway = self._order_owners[request_key]
+        order_request = order_response.order_request
+        gateway = self._instance_gateways[(order_request.instance_key, order_request.market.exchange_name)]
         gateway.publish_order_response(event_type, order_response)
-        if event_type == EventType.ORDER_FILLED:
-            self.put(EVENT_INSTANCE_ORDER_FILLED, StrategyEvent(gateway.instance_key, order_response))
-        if event_type in TERMINAL_ORDER_EVENTS and order_response.error != OrderError.CANCEL:
-            # A rejected cancel leaves the order live: the async gateway keeps
-            # tracking it, and its fill or cancellation must still find the owner.
-            del self._order_owners[request_key]
 
     def setup_multi(self):
-        # enable order routing
-        self._order_owners: dict[int, _Gateway] = {}
-        self.register(EVENT_CREATE_ORDER, self.handle_create_order)
-        self.register(EVENT_CANCEL_ORDER, self.handle_cancel_order)
+        self._instance_gateways: dict[tuple[str, ExchangeName], _Gateway] = {}
         for event_type in ORDER_RESPONSE_EVENTS:
             self.register(event_type, partial(self.handle_order_response, event_type))
 
@@ -169,9 +142,11 @@ class Runtime2(EventLoop):
             if isinstance(conn, MarketDataFeed):
                 for trader in self.traders:
                     trader.subscribe_market_data_feed(conn)
-        for gateway in self.gateways:
+        for shared_gateway in self.gateways:
             for trader in self.traders:
-                trader.add_gateway(_Gateway(gateway, self, self._instance_keys[trader]))
+                proxy = _Gateway(shared_gateway, self, self._instance_keys[trader])
+                trader.add_gateway(proxy)
+                self._instance_gateways[(proxy.instance_key, proxy.exchange_name)] = proxy
 
     def before_loop(self):
         # setup

@@ -17,7 +17,7 @@ from qate.core.symbol import Symbol
 from qate.trading.exceptions import StopTradingException
 from qate.trading.gateways.default import ReconOrdersCallable
 from qate.trading.gateways.nonblocking import DefaultGatewayAsync
-from qate.trading.runtime2 import EVENT_INSTANCE_ORDER_FILLED, Runtime2, StrategyEvent, _Gateway
+from qate.trading.runtime2 import Runtime2, _Gateway
 
 MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
 
@@ -613,11 +613,11 @@ def test_runtime2_routes_a_fill_that_arrives_after_a_rejected_cancel():
     runtime.add_gateway(gateway)
     runtime.setup_multi()
     a, b = _Gateway(gateway, runtime, "a"), _Gateway(gateway, runtime, "b")
+    runtime._instance_gateways[("a", gateway.exchange_name)] = a
+    runtime._instance_gateways[("b", gateway.exchange_name)] = b
     a_events, b_events = queue.Queue(), queue.Queue()
     a.add_order_listener(a_events)
     b.add_order_listener(b_events)
-    reported = []
-    runtime.register(EVENT_INSTANCE_ORDER_FILLED, reported.append)
 
     def next_for_a():
         deadline = time.monotonic() + 2
@@ -639,15 +639,14 @@ def test_runtime2_routes_a_fill_that_arrives_after_a_rejected_cancel():
         kind, response = next_for_a()
         assert kind == EventType.ORDER_ERROR
         assert response.error == OrderError.CANCEL
-        assert runtime._order_owners[id(order)] is a
+        assert order.instance_key == "a"
 
         feed.publish_execution(execution(order))
         kind, fill = next_for_a()
         assert kind == EventType.ORDER_FILLED
         assert fill.exec_size == 1
-        runtime._next()  # the instance-attributed fill for reporters
-        assert reported == [StrategyEvent("a", fill)]
-        assert id(order) not in runtime._order_owners
+        assert order.instance_key == "a"
+        assert not hasattr(runtime, "_order_owners")
         assert b_events.empty()
     finally:
         gateway.stop()

@@ -39,8 +39,8 @@ class Runtime(EventLoop):
         self.reporters.append(reporter)
 
         self.register(EventType.EXCEPTION, reporter.report_exception)
-        self.register(EventType.ORDER_FILLED, reporter.report_order)
-        self.register(EventType.METRICS, reporter.report_metrics)
+        self.register(EventType.TRADING_ORDER, reporter.report_order)
+        self.register(EventType.TRADING_METRICS, reporter.report_metrics)
         self.register(EventType.TRADING_PNL_UPDATE, reporter.report_pnl)
 
     def before_loop(self):

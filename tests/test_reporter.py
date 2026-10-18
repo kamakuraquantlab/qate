@@ -108,7 +108,7 @@ def test_a_fill_reaches_every_reporter(tmp_path, monkeypatch):
     run = runtime(tmp_path, monkeypatch, a, b)
 
     response = fill()
-    run.put(EventType.ORDER_FILLED, response)
+    run.put(EventType.TRADING_ORDER, response)
     run._next()
 
     assert a.kinds == ["report_order"]
@@ -146,7 +146,7 @@ def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
     good = Recorder()
     run = runtime(tmp_path, monkeypatch, Exploding(), good)
 
-    run.put(EventType.ORDER_FILLED, fill())
+    run.put(EventType.TRADING_ORDER, fill())
     run._next()
     run.put(EventType.TRADING_PNL_UPDATE, pnl(SettleType.CLOSE))
     run._next()
@@ -158,7 +158,7 @@ def test_a_failing_reporter_does_not_stop_the_run(tmp_path, monkeypatch):
 def test_a_reporter_that_overrides_nothing_is_harmless(tmp_path, monkeypatch):
     """Every hook is a no-op, so a reporter implements only what it cares about."""
     run = runtime(tmp_path, monkeypatch, Reporter())
-    run.put(EventType.ORDER_FILLED, fill())
+    run.put(EventType.TRADING_ORDER, fill())
     run._next()
     run.put(EventType.TRADING_PNL_UPDATE, pnl(SettleType.CLOSE))
     run._next()

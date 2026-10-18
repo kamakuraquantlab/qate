@@ -40,9 +40,15 @@ class OrderRequest(TimeSeriesData):
     ctx_id: int = field(default_factory=count().__next__)
     order_id: str = ""  # for cancelling or changing orders
     close_position_id: str | None = None  # for closing orders for a specific position
+    instance_key: str | None = None
 
     def get_ts(self) -> float:
         return self.ts
+
+    def set_instance_key(self, instance_key: str) -> None:
+        if self.instance_key is not None and self.instance_key != instance_key:
+            raise ValueError("Order request already belongs to another strategy instance")
+        self.instance_key = instance_key
 
     @property
     def summary(self) -> str:
@@ -51,6 +57,8 @@ class OrderRequest(TimeSeriesData):
         if self.close_position_id:
             s += f" close_position={self.close_position_id}"
         s += f" market={self.market.id}"
+        if self.instance_key:
+            s += f" instance={self.instance_key}"
         return s
 
 

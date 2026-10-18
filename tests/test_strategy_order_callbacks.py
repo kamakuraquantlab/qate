@@ -56,17 +56,21 @@ def test_a_fill_return_value_is_published_as_pnl():
 
     strategy._order_filled(response())
 
-    assert events.items == [(EventType.TRADING_PNL_UPDATE, pnl)]
+    assert events.items == [
+        (EventType.TRADING_ORDER, events.items[0][1]),
+        (EventType.TRADING_PNL_UPDATE, pnl),
+    ]
 
 
-def test_a_fill_without_pnl_publishes_nothing():
+def test_a_fill_without_pnl_still_publishes_the_order():
     strategy = Strategy()
     events = Events()
     strategy.add_status_listener(events)
 
     strategy._order_filled(response())
 
-    assert events.items == []
+    assert len(events.items) == 1
+    assert events.items[0][0] == EventType.TRADING_ORDER
 
 
 def test_a_fill_logs_pnl_before_publishing(caplog):
@@ -85,4 +89,7 @@ def test_a_fill_logs_pnl_before_publishing(caplog):
 
     assert "PNL market=GMO:BTC_JPY side=SELL" in caplog.text
     assert "pnl=12.50000000 fee=0.25000000 return=0.14285714" in caplog.text
-    assert events.items == [(EventType.TRADING_PNL_UPDATE, pnl)]
+    assert [event_type for event_type, _ in events.items] == [
+        EventType.TRADING_ORDER,
+        EventType.TRADING_PNL_UPDATE,
+    ]
