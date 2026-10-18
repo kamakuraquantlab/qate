@@ -196,7 +196,7 @@ def test_a_quitting_strategy_does_not_strand_another_strategys_cancel():
         def handle_order_book(self, order_book):
             raise EventLoopExit()
 
-    runtime = Runtime2(trader_stop_timeout_ts=5.0)
+    runtime = Runtime2()
     gateway = SimulatorGateway(ExchangeName.GMO)
     runtime.add_gateway(gateway)
     canceller = CancelsOnStop()
