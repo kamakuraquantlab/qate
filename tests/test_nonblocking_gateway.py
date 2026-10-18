@@ -31,8 +31,11 @@ class FakeApi(Api):
         return self.snapshot
 
     def fetch_executions(self, order_id, symbol):
-        return [ExchangeExecution('reconciled', order_id, self.snapshot.exec_price,
-                                  self.snapshot.exec_size, self.snapshot.exchange_ts)]
+        return [
+            ExchangeExecution(
+                "reconciled", order_id, self.snapshot.exec_price, self.snapshot.exec_size, self.snapshot.exchange_ts
+            )
+        ]
 
 
 class FakeOrderApi(OrderApi):
@@ -48,6 +51,11 @@ class FakeOrderApi(OrderApi):
         self.cancel_result = True
         self.created = []
         self.closed = threading.Event()
+        self.snapshot = None
+        self.fetch_started = threading.Event()
+        self.release_fetch = threading.Event()
+        self.release_fetch.set()
+        self.fetch_error = None
 
     async def create_order(self, order_request):
         self.create_started.set()
@@ -68,17 +76,58 @@ class FakeOrderApi(OrderApi):
         return self.cancel_result
 
     async def fetch_executions(self, order_id, symbol=None):
-        return []
+        if self.snapshot is None:
+            return []
+        return [
+            ExchangeExecution(
+                "reconciled",
+                order_id,
+                self.snapshot.exec_price,
+                self.snapshot.exec_size,
+                self.snapshot.exchange_ts,
+            )
+        ]
+
+    async def fetch_order(self, order_id, symbol=None):
+        self.fetch_started.set()
+        while not self.release_fetch.is_set():
+            await asyncio.sleep(0.001)
+        if self.fetch_error:
+            raise self.fetch_error
+        return self.snapshot
 
     async def aclose(self):
         self.closed.set()
+
+
+class ConcurrentOrderApi(FakeOrderApi):
+    def __init__(self):
+        super().__init__()
+        self.release_create.clear()
+        self._lock = threading.Lock()
+        self.started_count = 0
+        self.active_count = 0
+        self.peak_active_count = 0
+
+    async def create_order(self, order_request):
+        with self._lock:
+            self.started_count += 1
+            self.active_count += 1
+            self.peak_active_count = max(self.peak_active_count, self.active_count)
+        try:
+            while not self.release_create.is_set():
+                await asyncio.sleep(0.001)
+            return str(order_request.ctx_id)
+        finally:
+            with self._lock:
+                self.active_count -= 1
 
 
 def request():
     return OrderRequest(time.time(), MARKET, Side.BUY, 100, 1, SettleType.OPEN)
 
 
-def execution(order, size=1, trade_id='fill'):
+def execution(order, size=1, trade_id="fill"):
     return ExchangeExecution(trade_id, str(order.ctx_id), 100, size, time.time())
 
 
@@ -110,8 +159,8 @@ def setup_gateway():
     gateway.add_status_listener(statuses)
     feed = ExchangeFeed()
     gateway.subscribe_exchange_feed(feed)
-    gateway.register('TEST_BARRIER', lambda event: event.set())
-    gateway.register('TEST_RECONCILE', lambda _: ReconOrdersCallable(stale_after_ts=0)(gateway))
+    gateway.register("TEST_BARRIER", lambda event: event.set())
+    gateway.register("TEST_RECONCILE", lambda _: ReconOrdersCallable(stale_after_ts=0)(gateway))
     gateway.start()
     yield gateway, sync, async_api, feed, orders, statuses
     async_api.release_create.set()
@@ -126,7 +175,7 @@ def setup_gateway():
 def settle(gateway):
     """Wait until the gateway has finished handling all preceding events."""
     barrier = threading.Event()
-    gateway.put('TEST_BARRIER', barrier)
+    gateway.put("TEST_BARRIER", barrier)
     assert barrier.wait(2)
 
 
@@ -151,14 +200,14 @@ def test_create_and_fill(setup_gateway):
     assert order.order_id not in gateway.exchange_orders
 
 
-@pytest.mark.parametrize('early_kind', ['execution', 'order'])
+@pytest.mark.parametrize("early_kind", ["execution", "order"])
 def test_private_event_before_create_response_is_replayed(setup_gateway, early_kind):
     gateway, _, api, feed, orders, _ = setup_gateway
     api.release_create.clear()
     order = request()
     gateway.create(order)
     assert api.create_started.wait(2)
-    if early_kind == 'execution':
+    if early_kind == "execution":
         feed.publish_execution(execution(order))
     else:
         feed.publish_order(snapshot(order, OrderState.FILLED))
@@ -173,7 +222,7 @@ def test_private_event_before_create_response_is_replayed(setup_gateway, early_k
     assert str(order.ctx_id) not in gateway.exchange_orders
 
 
-@pytest.mark.parametrize('failure', [False, RuntimeError('cancel failed')])
+@pytest.mark.parametrize("failure", [False, RuntimeError("cancel failed")])
 def test_cancel_failure_reports_order_error_and_keeps_tracker(setup_gateway, failure):
     gateway, _, api, _, orders, _ = setup_gateway
     order = created(setup_gateway)
@@ -203,26 +252,81 @@ def test_cancel_acceptance_keeps_tracking_delayed_fill(setup_gateway):
     assert order.order_id not in gateway.exchange_orders
 
 
-@pytest.mark.parametrize('state', [OrderState.CANCELLED, OrderState.FILLED])
+@pytest.mark.parametrize("state", [OrderState.CANCELLED, OrderState.FILLED])
 def test_cancel_uses_confirmed_terminal_state(setup_gateway, state):
     gateway, sync, _, _, orders, _ = setup_gateway
     order = created(setup_gateway)
     sync.snapshot = snapshot(order, state)
     gateway.cancel(order)
     assert gateway.cancel_processed.wait(2)
-    gateway.put('TEST_RECONCILE')
+    gateway.put("TEST_RECONCILE")
     kind, response = orders.get(timeout=2)
     assert kind == (EventType.ORDER_FILLED if state == OrderState.FILLED else EventType.ORDER_CANCELLED)
     assert response.state == state
     settle(gateway)
     assert order.order_id not in gateway.exchange_orders
+    assert gateway.stats().reconciliation_runs == 1
+    assert gateway.stats().reconciled_orders == 1
+    assert gateway.stats().reconciliation_events == 1
+
+
+@pytest.mark.parametrize("state", [OrderState.CANCELLED, OrderState.FILLED])
+def test_async_reconciliation_uses_order_api(setup_gateway, state):
+    gateway, _, api, _, orders, _ = setup_gateway
+    order = created(setup_gateway)
+    api.snapshot = snapshot(order, state)
+
+    gateway._start_reconciliation(stale_after_ts=0, batch_size=5)
+    kind, response = orders.get(timeout=2)
+    assert kind == (EventType.ORDER_FILLED if state == OrderState.FILLED else EventType.ORDER_CANCELLED)
+    assert response.state == state
+    settle(gateway)
+
+    stats = gateway.stats()
+    assert stats.reconciliation_runs == 1
+    assert stats.reconciled_orders == 1
+    assert stats.reconciliation_events == 1
+    assert order.order_id not in gateway.exchange_orders
+
+
+def test_async_reconciliation_does_not_block_gateway_events(setup_gateway):
+    gateway, _, api, _, orders, _ = setup_gateway
+    order = created(setup_gateway)
+    api.snapshot = snapshot(order, OrderState.CANCELLED)
+    api.release_fetch.clear()
+
+    gateway._start_reconciliation(stale_after_ts=0, batch_size=5)
+    assert api.fetch_started.wait(2)
+    barrier = threading.Event()
+    gateway.put("TEST_BARRIER", barrier)
+    assert barrier.wait(2)
+
+    api.release_fetch.set()
+    assert orders.get(timeout=2)[0] == EventType.ORDER_CANCELLED
+
+
+def test_async_reconciliation_failure_is_retryable(setup_gateway):
+    gateway, _, api, _, orders, statuses = setup_gateway
+    order = created(setup_gateway)
+    error = RuntimeError("reconciliation failed")
+    api.fetch_error = error
+
+    gateway._start_reconciliation(stale_after_ts=0, batch_size=5)
+    assert statuses.get(timeout=2) == (EventType.EXCEPTION, error)
+    settle(gateway)
+
+    assert orders.empty()
+    assert order.order_id in gateway.exchange_orders
+    assert not gateway._reconciliation_pending
+    assert gateway.stats().reconciliation_runs == 1
+    assert gateway.stats().failed_operations == 1
 
 
 def test_fill_before_cancel_failure_wins_without_spurious_error(setup_gateway):
     gateway, _, api, feed, orders, _ = setup_gateway
     order = created(setup_gateway)
     api.release_cancel.clear()
-    api.cancel_error = RuntimeError('already filled')
+    api.cancel_error = RuntimeError("already filled")
     gateway.cancel(order)
     assert api.cancel_started.wait(2)
     feed.publish_execution(execution(order))
@@ -233,11 +337,11 @@ def test_fill_before_cancel_failure_wins_without_spurious_error(setup_gateway):
     assert orders.empty()
 
 
-@pytest.mark.parametrize('operation', ['create', 'cancel'])
+@pytest.mark.parametrize("operation", ["create", "cancel"])
 def test_fatal_errors_stop_gateway(setup_gateway, operation):
     gateway, _, api, _, orders, statuses = setup_gateway
-    fatal = StopTradingException('stop now')
-    if operation == 'create':
+    fatal = StopTradingException("stop now")
+    if operation == "create":
         api.create_error = fatal
         gateway.create(request())
     else:
@@ -266,17 +370,17 @@ def test_shutdown_drains_inflight_create_before_closing_api(setup_gateway):
     assert orders.get(timeout=2)[0] == EventType.ORDER_CREATED
     assert api.created == [str(order.ctx_id)]
     assert str(order.ctx_id) in gateway.exchange_orders
-    with pytest.raises(RuntimeError, match='stopping'):
+    with pytest.raises(RuntimeError, match="stopping"):
         gateway.create(request())
 
 
 def test_duplicate_execution_does_not_overcount_partial_fill(setup_gateway):
     gateway, _, _, feed, orders, _ = setup_gateway
     order = created(setup_gateway)
-    partial = execution(order, 0.5, 'first')
+    partial = execution(order, 0.5, "first")
     feed.publish_execution(partial)
     feed.publish_execution(partial)  # e.g. reconciliation repeats a feed event
-    feed.publish_execution(execution(order, 0.5, 'second'))
+    feed.publish_execution(execution(order, 0.5, "second"))
     kind, fill = orders.get(timeout=2)
     assert kind == EventType.ORDER_FILLED
     assert fill.exec_size == 1
@@ -294,13 +398,15 @@ def test_no_status_after_cancel_ack_waits_for_private_confirmation(setup_gateway
     assert order.order_id not in gateway.exchange_orders
 
 
-@pytest.mark.parametrize('failure', [None, RuntimeError('create failed')])
+@pytest.mark.parametrize("failure", [None, RuntimeError("create failed")])
 def test_create_failure_reports_order_error(setup_gateway, failure):
     gateway, _, api, _, orders, _ = setup_gateway
     api.create_error = failure
     if failure is None:
+
         async def refuse(order):
             return None
+
         api.create_order = refuse
     gateway.create(request())
     kind, response = orders.get(timeout=2)
@@ -328,7 +434,7 @@ def test_shutdown_drains_inflight_cancel(setup_gateway):
 
 def test_close_failure_still_reports_gateway_exit(setup_gateway):
     gateway, _, api, _, _, statuses = setup_gateway
-    error = RuntimeError('close failed')
+    error = RuntimeError("close failed")
 
     async def broken_close():
         api.closed.set()
@@ -347,7 +453,7 @@ def test_fatal_error_still_drains_other_submitted_creates(setup_gateway):
     first, second = request(), request()
     api.release_create.clear()
     original_create = api.create_order
-    fatal = StopTradingException('second create is fatal')
+    fatal = StopTradingException("second create is fatal")
 
     async def create(order):
         if order is second:
@@ -377,3 +483,121 @@ def test_stop_before_start_closes_async_resources():
     gateway.stop()  # Closing an unstarted gateway is idempotent too.
     assert api.closed.is_set()
     assert not gateway._async_thread.is_alive()
+
+
+def test_capacity_rejects_without_blocking_gateway_thread():
+    api = FakeOrderApi()
+    api.release_create.clear()
+    gateway = DefaultGatewayAsync(
+        FakeApi(),
+        api,
+        heartbeat_interval_ts=0.1,
+        max_concurrent_operations=1,
+        max_pending_operations=1,
+    )
+    orders = queue.Queue()
+    gateway.add_order_listener(orders)
+    gateway.start()
+    try:
+        first, second = request(), request()
+        gateway.create(first)
+        assert api.create_started.wait(2)
+        gateway.create(second)
+        kind, response = orders.get(timeout=2)
+        assert kind == EventType.ORDER_ERROR
+        assert response.order_request is second
+        assert response.error == OrderError.CREATE
+        assert gateway.stats().rejected_operations == 1
+
+        api.release_create.set()
+        kind, response = orders.get(timeout=2)
+        assert kind == EventType.ORDER_CREATED
+        assert response.order_request is first
+    finally:
+        api.release_create.set()
+        gateway.stop()
+        gateway.join(timeout=2)
+    assert not gateway.is_alive()
+
+
+def test_concurrent_operations_are_bounded():
+    api = ConcurrentOrderApi()
+    gateway = DefaultGatewayAsync(
+        FakeApi(),
+        api,
+        heartbeat_interval_ts=0.1,
+        max_concurrent_operations=2,
+        max_pending_operations=3,
+    )
+    orders = queue.Queue()
+    gateway.add_order_listener(orders)
+    gateway.start()
+    try:
+        for _ in range(3):
+            gateway.create(request())
+        deadline = time.monotonic() + 2
+        while api.started_count < 2 and time.monotonic() < deadline:
+            time.sleep(0.001)
+        assert api.started_count == 2
+        assert api.peak_active_count == 2
+
+        api.release_create.set()
+        for _ in range(3):
+            assert orders.get(timeout=2)[0] == EventType.ORDER_CREATED
+    finally:
+        api.release_create.set()
+        gateway.stop()
+        gateway.join(timeout=2)
+    assert not gateway.is_alive()
+
+
+def test_stats_record_latency_failure_and_early_event(setup_gateway):
+    gateway, _, api, feed, orders, _ = setup_gateway
+    api.release_create.clear()
+    order = request()
+    gateway.create(order)
+    assert api.create_started.wait(2)
+    feed.publish_execution(execution(order))
+    api.release_create.set()
+    assert orders.get(timeout=2)[0] == EventType.ORDER_CREATED
+    assert orders.get(timeout=2)[0] == EventType.ORDER_FILLED
+    settle(gateway)
+
+    stats = gateway.stats()
+    assert stats.pending_operations == 0
+    assert stats.peak_pending_operations == 1
+    assert stats.submitted_operations == 1
+    assert stats.completed_operations == 1
+    assert stats.failed_operations == 0
+    assert stats.early_events == 1
+    assert stats.average_latency_ms >= 0
+    assert stats.max_latency_ms >= stats.average_latency_ms
+
+
+def test_shutdown_timeout_cancels_stuck_operation():
+    api = FakeOrderApi()
+    api.release_create.clear()
+    gateway = DefaultGatewayAsync(
+        FakeApi(),
+        api,
+        heartbeat_interval_ts=0.1,
+        shutdown_timeout_ts=0.1,
+    )
+    orders, statuses = queue.Queue(), queue.Queue()
+    gateway.add_order_listener(orders)
+    gateway.add_status_listener(statuses)
+    gateway.start()
+    gateway.create(request())
+    assert api.create_started.wait(2)
+    gateway.stop()
+    gateway.join(timeout=2)
+
+    assert not gateway.is_alive()
+    assert not gateway._async_thread.is_alive()
+    assert api.closed.is_set()
+    assert orders.get(timeout=2)[0] == EventType.ORDER_ERROR
+    reported = []
+    while not statuses.empty():
+        reported.append(statuses.get_nowait())
+    assert any(event_type == EventType.EXCEPTION and isinstance(value, TimeoutError) for event_type, value in reported)
+    assert gateway.stats().failed_operations == 1

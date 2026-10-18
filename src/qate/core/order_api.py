@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from .order import ExchangeExecution, OrderRequest
+from .order import ExchangeExecution, ExchangeOrder, OrderRequest
 from .symbol import Symbol
 
 
@@ -14,6 +14,10 @@ class OrderApi(ABC):
     @abstractmethod
     async def cancel_order(self, order_request: OrderRequest) -> bool:
         """Cancel an existing order and return True when the exchange accepted the request."""
+
+    @abstractmethod
+    async def fetch_order(self, order_id: str, symbol: Symbol | None = None) -> ExchangeOrder:
+        """Return the current exchange state for an order."""
 
     @abstractmethod
     async def fetch_executions(self, order_id: str, symbol: Symbol | None = None) -> list[ExchangeExecution]:

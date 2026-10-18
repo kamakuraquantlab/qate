@@ -23,10 +23,17 @@ LOG = getLogger(__name__)
 
 
 class DefaultGateway(QueuedGateway):
-    def __init__(self, api: Api, heartbeat_interval_ts: float = 3.0):
+    def __init__(
+        self,
+        api: Api,
+        heartbeat_interval_ts: float = 3.0,
+        *,
+        schedule_reconciliation: bool = True,
+    ):
         super(DefaultGateway, self).__init__(api, heartbeat_interval_ts)
         self.exchange_orders: dict[str, OrderTracker] = {}
-        self.repeat(5, ReconOrdersCallable())
+        if schedule_reconciliation:
+            self.repeat(5, ReconOrdersCallable())
 
     def subscribe_exchange_feed(self, exchange_feed: ExchangeFeed):
         exchange_feed.add_execution_listener(self.event_queue)
@@ -104,6 +111,9 @@ class DefaultGateway(QueuedGateway):
 
     def fetch_balance_sync(self, symbol: Symbol):
         return self.api.fetch_balance(symbol)
+
+    def _record_reconciliation(self, checked_orders: int, terminal_events: int) -> None:
+        """Optional observability hook for gateway variants."""
 
 
 @dataclass
@@ -207,3 +217,8 @@ class ReconOrdersCallable:
         for o in cancelled_orders:
             LOG.info(f"ReconOrdersCallable cancelled order_id={o.order_id}")
             caller.handle_exchange_order(o)
+
+        caller._record_reconciliation(
+            min(len(stale_orders), self.batch_size),
+            len(executions) + len(cancelled_orders),
+        )
