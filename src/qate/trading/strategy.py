@@ -73,6 +73,14 @@ class Strategy(StatusFeed, Generic[C]):
         LOG.info(f"ORDER {order_response.summary}")
         pnl_update = self.handle_order_filled(order_response)
         if pnl_update is not None:
+            LOG.info(
+                "PNL market=%s side=%s pnl=%.8f fee=%.8f return=%.8f",
+                pnl_update.market.id,
+                pnl_update.side._name_,
+                pnl_update.pnl,
+                pnl_update.fee,
+                pnl_update.pnl_return,
+            )
             self.publish_status(EventType.TRADING_PNL_UPDATE, pnl_update)
 
     def _order_error(self, order_response: OrderResponse):

@@ -12,7 +12,7 @@ change is measured against that.
 Concretely, and in order of how easy each is to break by accident:
 
 1. **No HTTP client and no WebSocket client may enter the dependency tree, at any
-   depth.** Both live in `qate-exchanges`. Their absence is what makes the claim
+   depth.** Both live in `k2-exchanges`. Their absence is what makes the claim
    checkable with `pip list` rather than by review. An "optional" extra that pulls
    one in is the same mistake wearing a hat, and so is a data dependency that
    brings one transitively — which is how `httpx` got in here once, through
@@ -47,11 +47,11 @@ Two tests hold this, and both are worth understanding before changing them:
 
 | Adding | Goes in | Not in |
 |---|---|---|
-| A venue, or anything venue-specific | `qate-exchanges` | here |
-| A live-trading dev program | `qate-exchanges/tools/` | `tests/` |
+| A venue, or anything venue-specific | `k2-exchanges` | here |
+| A live-trading dev program | `k2-exchanges/tools/` | `tests/` |
 | A production strategy | its own private repo | here |
 | Anything naming a directory, host or credential | `qate-env` | here |
-| A venue's fee rate | that venue's folder in `qate-exchanges` | here |
+| A venue's fee rate | that venue's folder in `k2-exchanges` | here |
 | A file an environment can contain, or its loader | `qate-env` | here |
 | A third worked example | probably nowhere — two is the point | |
 | A generic indicator, chart, or risk rule | `qate.trading` | |
@@ -66,8 +66,8 @@ and risk modules in `qate.trading`, and `qate.env` with `qate.boot` — a run
 directory, a credential lookup and a config loader, none of which anything here
 imported. Before adding a module, name what in this package or in Enoshima will
 import it. Before keeping one, check that something still does — and check
-`qate-env`, `qate-exchanges` and the private live runner too, all of which depend on
-this package; one of those sweeps nearly broke `qate-exchanges`.
+`qate-env`, `k2-exchanges` and the private live runner too, all of which depend on
+this package; one of those sweeps nearly broke `k2-exchanges`.
 
 **`qate.trading.runtime.Runtime` is the exception, and knowingly.** Nothing here
 imports it: a backtest drives a `Trader` directly and the live runner that needs a

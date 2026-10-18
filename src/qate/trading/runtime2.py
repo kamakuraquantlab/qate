@@ -7,7 +7,7 @@ from qate.core.ev_loop import EventLoop
 from qate.core.ev_type import EventType
 from qate.core.feed import MarketDataFeed, OrderFeed
 from qate.core.gateway import ExchangeGateway
-from qate.core.order import OrderRequest, OrderResponse
+from qate.core.order import OrderError, OrderRequest, OrderResponse
 from qate.trading.reporter import Reporter
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
@@ -152,7 +152,9 @@ class Runtime2(EventLoop):
         gateway.publish_order_response(event_type, order_response)
         if event_type == EventType.ORDER_FILLED:
             self.put(EVENT_INSTANCE_ORDER_FILLED, StrategyEvent(gateway.instance_key, order_response))
-        if event_type in TERMINAL_ORDER_EVENTS:
+        if event_type in TERMINAL_ORDER_EVENTS and order_response.error != OrderError.CANCEL:
+            # A rejected cancel leaves the order live: the async gateway keeps
+            # tracking it, and its fill or cancellation must still find the owner.
             del self._order_owners[request_key]
 
     def setup_multi(self):

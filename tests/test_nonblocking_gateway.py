@@ -17,6 +17,7 @@ from qate.core.symbol import Symbol
 from qate.trading.exceptions import StopTradingException
 from qate.trading.gateways.default import ReconOrdersCallable
 from qate.trading.gateways.nonblocking import DefaultGatewayAsync
+from qate.trading.runtime2 import EVENT_INSTANCE_ORDER_FILLED, Runtime2, StrategyEvent, _Gateway
 
 MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
 
@@ -601,3 +602,54 @@ def test_shutdown_timeout_cancels_stuck_operation():
         reported.append(statuses.get_nowait())
     assert any(event_type == EventType.EXCEPTION and isinstance(value, TimeoutError) for event_type, value in reported)
     assert gateway.stats().failed_operations == 1
+
+
+def test_runtime2_routes_a_fill_that_arrives_after_a_rejected_cancel():
+    """Two strategies share one async gateway; a lost cancel race still reaches its owner."""
+    gateway = DefaultGatewayAsync(FakeApi(), FakeOrderApi(), heartbeat_interval_ts=0.1)
+    feed = ExchangeFeed()
+    gateway.subscribe_exchange_feed(feed)
+    runtime = Runtime2()
+    runtime.add_gateway(gateway)
+    runtime.setup_multi()
+    a, b = _Gateway(gateway, runtime, "a"), _Gateway(gateway, runtime, "b")
+    a_events, b_events = queue.Queue(), queue.Queue()
+    a.add_order_listener(a_events)
+    b.add_order_listener(b_events)
+    reported = []
+    runtime.register(EVENT_INSTANCE_ORDER_FILLED, reported.append)
+
+    def next_for_a():
+        deadline = time.monotonic() + 2
+        while a_events.empty():
+            assert time.monotonic() < deadline
+            runtime._next()
+        return a_events.get_nowait()
+
+    gateway.start()
+    try:
+        order = request()
+        a.create(order)
+        kind, response = next_for_a()
+        assert kind == EventType.ORDER_CREATED
+        order.order_id = response.order_id
+
+        gateway._order_api.cancel_error = RuntimeError("cancel rejected")
+        a.cancel(order)
+        kind, response = next_for_a()
+        assert kind == EventType.ORDER_ERROR
+        assert response.error == OrderError.CANCEL
+        assert runtime._order_owners[id(order)] is a
+
+        feed.publish_execution(execution(order))
+        kind, fill = next_for_a()
+        assert kind == EventType.ORDER_FILLED
+        assert fill.exec_size == 1
+        runtime._next()  # the instance-attributed fill for reporters
+        assert reported == [StrategyEvent("a", fill)]
+        assert id(order) not in runtime._order_owners
+        assert b_events.empty()
+    finally:
+        gateway.stop()
+        gateway.join(timeout=3)
+    assert not gateway.is_alive()
