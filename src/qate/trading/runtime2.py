@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from functools import partial
 from logging import getLogger
@@ -14,6 +15,8 @@ from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
 
 LOG = getLogger(__name__)
+
+EVENT_STOP = "RUNTIME_STOP"
 
 
 ORDER_RESPONSE_EVENTS = (
@@ -89,9 +92,14 @@ class _Gateway(ExchangeGateway):
 
 
 class Runtime2(EventLoop):
-    def __init__(self):
-        super().__init__(None, heartbeat_interval=5)
+    def __init__(self, trader_stop_timeout_ts: float = 40.0, gateway_stop_timeout_ts: float = 15.0):
+        # Traders get longer than a strategy's own shutdown (pisces waits 30s for
+        # its cancels); gateways get longer than the async gateway's drain.
+        super().__init__(None, heartbeat_interval=1)
         self.register(EventType.EV_LOOP_EXIT, self.handle_exit)
+        self.register(EVENT_STOP, self.handle_stop)
+        self.trader_stop_timeout_ts = trader_stop_timeout_ts
+        self.gateway_stop_timeout_ts = gateway_stop_timeout_ts
 
         self.conns: list[Connection] = []
         self.gateways: list[ExchangeGateway] = []
@@ -100,6 +108,9 @@ class Runtime2(EventLoop):
         self.reporters: list[Reporter] = []
 
         self.should_exit = False
+        self._exited_traders: set[Trader] = set()
+        self._trader_deadline: float | None = None
+        self._torn_down = False
 
     def add_conn(self, conn: Connection):
         self.conns.append(conn)
@@ -173,22 +184,55 @@ class Runtime2(EventLoop):
             reporter.stop()
 
     def handle_exit(self, ev_loop: EventLoop):
-        if self.should_exit:
-            return
-        LOG.info("Stop all because ev_loop=%s exited", ev_loop.__class__.__name__)
-        self.stop()
+        if isinstance(ev_loop, Trader):
+            self._exited_traders.add(ev_loop)
+        if not self.should_exit:
+            LOG.info("Stop all because ev_loop=%s exited", ev_loop.__class__.__name__)
+            self.handle_stop()
+        self._tear_down_if_traders_done()
 
     def stop(self):
+        """Ask every trader to stop, then tear down once they have.
+
+        Callable from any thread. The shutdown runs on this loop so that it keeps
+        routing order responses meanwhile: a stopping strategy is waiting for the
+        confirmations of the cancels it just sent.
+        """
+        if self.is_alive():
+            self.put(EVENT_STOP)
+        else:
+            self._tear_down()
+
+    def handle_stop(self, _=None):
         if self.should_exit:
             return
         self.should_exit = True
         LOG.info("stop")
-        try:
-            for trader in self.traders:
-                LOG.info(f"stop trader {trader.__class__.__name__} {trader.strategy.__class__.__name__}")
-                trader.stop()
-                trader.join(timeout=5.0)
+        self._trader_deadline = time.monotonic() + self.trader_stop_timeout_ts
+        for trader in self.traders:
+            LOG.info(f"stop trader {trader.__class__.__name__} {trader.strategy.__class__.__name__}")
+            trader.stop()
+        self._tear_down_if_traders_done()
 
+    def heartbeat(self):
+        super().heartbeat()
+        self._tear_down_if_traders_done()
+
+    def _tear_down_if_traders_done(self):
+        if not self.should_exit or self._torn_down:
+            return
+        running = [t for t in self.traders if t not in self._exited_traders and t.is_alive()]
+        if running and time.monotonic() < self._trader_deadline:
+            return
+        for trader in running:
+            LOG.error(f"trader {trader.strategy.__class__.__name__} did not stop in {self.trader_stop_timeout_ts}s")
+        self._tear_down()
+
+    def _tear_down(self):
+        if self._torn_down:
+            return
+        self._torn_down = True
+        try:
             for conn in self.conns:
                 LOG.info(f"disconnect conn {conn.__class__.__name__} {conn.exchange_name.name}")
                 conn.disconnect()
@@ -197,6 +241,6 @@ class Runtime2(EventLoop):
                 LOG.info(f"stop gateway {gateway.__class__.__name__} {gateway.exchange_name.name}")
                 if isinstance(gateway, EventLoop):
                     gateway.stop()
-                    gateway.join(timeout=5.0)
+                    gateway.join(timeout=self.gateway_stop_timeout_ts)
         finally:
             super().stop()

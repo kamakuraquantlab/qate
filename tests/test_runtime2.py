@@ -146,3 +146,73 @@ def test_duplicate_strategy_instance_keys_are_rejected():
 
     with pytest.raises(ValueError, match="Duplicate strategy instance key"):
         runtime.add_strategy(type("S", (), {})(), "same")
+
+
+def test_a_quitting_strategy_does_not_strand_another_strategys_cancel():
+    """One trader exits; the others must still get their shutdown cancels confirmed.
+
+    The shutdown used to block this runtime's own loop while it joined traders, so
+    the confirmation a stopping strategy was waiting for was never routed to it.
+    """
+    import threading
+
+    from qate.core.ev_type import EventType
+    from qate.core.model import EventLoopExit, OrderBook, OrderLevel
+    from qate.trading.gateways import SimulatorGateway
+    from qate.trading.strategy import Strategy
+
+    book = OrderBook([OrderLevel(99.0, 1.0)], [OrderLevel(101.0, 1.0)], Symbol.BTC_JPY, ExchangeName.GMO, 1.0)
+
+    class CancelsOnStop(Strategy):
+        is_ready = True
+
+        def __init__(self):
+            super().__init__()
+            self.created = threading.Event()
+            self.cancelled = threading.Event()
+
+        def add_gateway(self, gateway):
+            self.gateway = gateway
+
+        def before_loop(self):
+            self.gateway.create(request())
+
+        def handle_order_created(self, order_response):
+            self.order = order_response
+            self.created.set()
+
+        def handle_stop(self, _):
+            order_request = self.order.order_request
+            order_request.order_id = self.order.order_id
+            self.gateway.cancel(order_request)
+
+        def handle_order_cancelled(self, order_response):
+            self.cancelled.set()
+            raise EventLoopExit()
+
+    class Quits(Strategy):
+        is_ready = True
+
+        def handle_order_book(self, order_book):
+            raise EventLoopExit()
+
+    runtime = Runtime2(trader_stop_timeout_ts=5.0)
+    gateway = SimulatorGateway(ExchangeName.GMO)
+    runtime.add_gateway(gateway)
+    canceller = CancelsOnStop()
+    runtime.add_strategy(canceller, "a")
+    runtime.add_strategy(Quits(), "b")
+    for trader in runtime.traders:
+        trader.event_queue.put((EventType.MARKET_ORDER_BOOK, book))  # consumed by warmup
+
+    runtime.start()
+    try:
+        assert canceller.created.wait(2)
+        runtime.traders[1].event_queue.put((EventType.MARKET_ORDER_BOOK, book))  # "b" quits
+        runtime.join(timeout=4)
+        assert not runtime.is_alive()
+        assert canceller.cancelled.is_set()
+        assert not gateway.is_alive()
+    finally:
+        runtime.stop()
+        runtime.join(timeout=10)
