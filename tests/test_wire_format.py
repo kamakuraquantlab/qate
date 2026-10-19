@@ -197,5 +197,5 @@ def test_a_pnl_metric_layout(closing):
     ]  # fmt: skip
     expected = [Field.FEE.value, 0.25]
     if closing:
-        expected += [Field.PNL.value, 10.0, "return", 0.1]
+        expected += [Field.PNL.value, 10.0, Field.RETURN.value, 0.1]
     assert metric.fields == expected

@@ -43,7 +43,7 @@ class PnlUpdate(TimeSeriesData):
         """
         fields = [Field.FEE.value, self.fee]
         if self.settle_type == SettleType.CLOSE:
-            fields.extend([Field.PNL.value, self.pnl, "return", self.pnl_return])
+            fields.extend([Field.PNL.value, self.pnl, Field.RETURN.value, self.pnl_return])
         return Metric(
             Measurement.PNL.value,
             self.get_ts(),
