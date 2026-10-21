@@ -19,7 +19,7 @@ class Measurement(Enum):
     SYS = auto()
     EVAL = auto()
     BAR = auto()
-    ORDER_PERF = auto()
+    PERF_ORDER = auto()
 
 
 class Tag(Enum):
@@ -30,7 +30,7 @@ class Tag(Enum):
     ORDER_TYPE = auto()
     DATA_TYPE = auto()
     DESC = auto()
-    OUTCOME = auto()
+    PERF_OUTCOME = auto()
 
 
 class Field(Enum):
@@ -54,15 +54,16 @@ class Field(Enum):
     FEE = auto()
     # general
     VALUE = auto()
-    # order_perf, durations in seconds
-    BOOK_AGE = auto()
-    QUEUE_TIME = auto()
-    CREATE_RTT = auto()
-    ACK_TIME = auto()
-    FILL_TIME = auto()
-    CANCEL_RTT = auto()
-    CANCEL_TIME = auto()
-    SLIPPAGE_BPS = auto()
+    # perf_order, durations in seconds
+    PERF_BOOK_AGE = auto()
+    PERF_QUEUE_TIME = auto()
+    PERF_CREATE_RTT = auto()
+    PERF_ACK_TIME = auto()
+    PERF_FILL_TIME = auto()
+    PERF_CANCEL_RTT = auto()
+    PERF_CANCEL_TIME = auto()
+    PERF_SLIPPAGE_BPS = auto()
+    PERF_SLIPPAGE = auto()
 
 
 class DataType(Enum):

@@ -687,17 +687,17 @@ def test_a_filled_order_publishes_its_perf_metric(setup_gateway):
     [published] = order_metrics(statuses)
     assert published.order_request is order
     metric = published.metric
-    assert metric.measurement == Measurement.ORDER_PERF.value
+    assert metric.measurement == Measurement.PERF_ORDER.value
     tags = dict(zip(metric.tags[::2], metric.tags[1::2]))
-    assert tags[Tag.OUTCOME.value] == "FILLED"
+    assert tags[Tag.PERF_OUTCOME.value] == "FILLED"
     assert tags[Tag.SIDE.value] == Side.BUY.value
     fields = dict(zip(metric.fields[::2], metric.fields[1::2]))
-    assert fields[Field.BOOK_AGE.value] >= 0.25
-    assert fields[Field.SLIPPAGE.value] == pytest.approx(0.5)
-    assert fields[Field.SLIPPAGE_BPS.value] == pytest.approx(50)
-    for field in (Field.QUEUE_TIME, Field.CREATE_RTT, Field.ACK_TIME, Field.FILL_TIME):
+    assert fields[Field.PERF_BOOK_AGE.value] >= 0.25
+    assert fields[Field.PERF_SLIPPAGE.value] == pytest.approx(0.5)
+    assert fields[Field.PERF_SLIPPAGE_BPS.value] == pytest.approx(50)
+    for field in (Field.PERF_QUEUE_TIME, Field.PERF_CREATE_RTT, Field.PERF_ACK_TIME, Field.PERF_FILL_TIME):
         assert fields[field.value] >= 0
-    assert Field.CANCEL_RTT.value not in fields
+    assert Field.PERF_CANCEL_RTT.value not in fields
     assert not gateway._order_perf
 
 
@@ -713,11 +713,11 @@ def test_a_cancelled_order_publishes_its_cancel_timings(setup_gateway):
 
     [published] = order_metrics(statuses)
     tags = dict(zip(published.metric.tags[::2], published.metric.tags[1::2]))
-    assert tags[Tag.OUTCOME.value] == "CANCELLED"
+    assert tags[Tag.PERF_OUTCOME.value] == "CANCELLED"
     fields = dict(zip(published.metric.fields[::2], published.metric.fields[1::2]))
-    assert fields[Field.CANCEL_RTT.value] >= 0
-    assert fields[Field.CANCEL_TIME.value] >= 0
-    assert Field.FILL_TIME.value not in fields
+    assert fields[Field.PERF_CANCEL_RTT.value] >= 0
+    assert fields[Field.PERF_CANCEL_TIME.value] >= 0
+    assert Field.PERF_FILL_TIME.value not in fields
 
 
 def test_runtime2_reports_order_metrics_for_the_owning_instance():
@@ -731,7 +731,7 @@ def test_runtime2_reports_order_metrics_for_the_owning_instance():
     runtime.add_reporter(Recorder())
     order = request()
     order.set_instance_key("02")
-    metric = Metric(Measurement.ORDER_PERF.value, 1.0)
+    metric = Metric(Measurement.PERF_ORDER.value, 1.0)
     for handler in runtime.handlers[EventType.ORDER_METRICS]:
         handler(OrderMetrics(order, metric))
     assert reported == [StrategyEvent("02", metric)]

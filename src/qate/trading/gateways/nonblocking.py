@@ -33,22 +33,22 @@ _EVENT_REJECTED = "EVENT_ASYNC_OPERATION_REJECTED"
 _EVENT_STOP = "EVENT_ASYNC_GATEWAY_STOP"
 PERF_GATEWAY = "PERF_GATEWAY"
 
-_ORDER_PERF = Measurement.ORDER_PERF._value_
+_PERF_ORDER = Measurement.PERF_ORDER._value_
 _TAG_EXCHANGE_NAME = Tag.EXCHANGE_NAME._value_
 _TAG_SYMBOL = Tag.SYMBOL._value_
 _TAG_SIDE = Tag.SIDE._value_
 _TAG_SETTLE_TYPE = Tag.SETTLE_TYPE._value_
 _TAG_ORDER_TYPE = Tag.ORDER_TYPE._value_
-_TAG_OUTCOME = Tag.OUTCOME._value_
-_FIELD_BOOK_AGE = Field.BOOK_AGE._value_
-_FIELD_QUEUE_TIME = Field.QUEUE_TIME._value_
-_FIELD_CREATE_RTT = Field.CREATE_RTT._value_
-_FIELD_ACK_TIME = Field.ACK_TIME._value_
-_FIELD_FILL_TIME = Field.FILL_TIME._value_
-_FIELD_CANCEL_RTT = Field.CANCEL_RTT._value_
-_FIELD_CANCEL_TIME = Field.CANCEL_TIME._value_
-_FIELD_SLIPPAGE = Field.SLIPPAGE._value_
-_FIELD_SLIPPAGE_BPS = Field.SLIPPAGE_BPS._value_
+_TAG_PERF_OUTCOME = Tag.PERF_OUTCOME._value_
+_FIELD_PERF_BOOK_AGE = Field.PERF_BOOK_AGE._value_
+_FIELD_PERF_QUEUE_TIME = Field.PERF_QUEUE_TIME._value_
+_FIELD_PERF_CREATE_RTT = Field.PERF_CREATE_RTT._value_
+_FIELD_PERF_ACK_TIME = Field.PERF_ACK_TIME._value_
+_FIELD_PERF_FILL_TIME = Field.PERF_FILL_TIME._value_
+_FIELD_PERF_CANCEL_RTT = Field.PERF_CANCEL_RTT._value_
+_FIELD_PERF_CANCEL_TIME = Field.PERF_CANCEL_TIME._value_
+_FIELD_PERF_SLIPPAGE = Field.PERF_SLIPPAGE._value_
+_FIELD_PERF_SLIPPAGE_BPS = Field.PERF_SLIPPAGE_BPS._value_
 
 
 @dataclass
@@ -75,7 +75,7 @@ class _AsyncOrderResult:
 class _OrderPerf:
     """What it cost, in time, to get one order to the exchange and back.
 
-    `ORDER_PERF` reports these once per order, at its terminal state.
+    `PERF_ORDER` reports these once per order, at its terminal state.
     """
 
     decision_ts: float
@@ -116,7 +116,7 @@ class DefaultGatewayAsync(DefaultGateway):
     feed event about the order, which is what lets an early execution be buffered.
 
     Each order's timeline is published once, at its terminal state, as an
-    `ORDER_METRICS` status event holding an `ORDER_PERF` metric; see
+    `ORDER_METRICS` status event holding a `PERF_ORDER` metric; see
     `_publish_order_perf`.
 
     Stop drains submitted operations and their results before closing the API.
@@ -582,51 +582,51 @@ class DefaultGatewayAsync(DefaultGateway):
         super().publish_order_error(order_response)
 
     def _publish_order_perf(self, order_response: OrderResponse, outcome: str) -> None:
-        """One `ORDER_PERF` metric per order, published on the status feed as `ORDER_METRICS`.
+        """One `PERF_ORDER` metric per order, published on the status feed as `ORDER_METRICS`.
 
-        Tagged like an `ORDER` record, plus `OUTCOME` (FILLED, CANCELLED or
+        Tagged like an `ORDER` record, plus `PERF_OUTCOME` (FILLED, CANCELLED or
         CREATE_ERROR). Durations are seconds; a field is absent when it does not
         apply, e.g. no cancel was sent. Slippage positive is worse.
 
-        BOOK_AGE      submit - order_request.ts. Strategies stamp `ts` with the
-                      triggering event's exchange timestamp, so this is how old the
-                      market data was when the order left the strategy: venue -> host
-                      transport, queueing, and the decision itself. Includes clock
-                      offset against the venue.
-        QUEUE_TIME    submit -> request started on the asyncio thread
-        CREATE_RTT    create request round trip
-        ACK_TIME      submit -> gateway published ORDER_CREATED
-        FILL_TIME     submit -> gateway saw the order complete
-        CANCEL_RTT    cancel request round trip
-        CANCEL_TIME   cancel submit -> confirmed cancelled: how long a maker order
-                      could still be filled after the strategy gave up on it
-        SLIPPAGE      exec price vs. `order_request.price`, in price units per unit
-        SLIPPAGE_BPS  the same, in basis points of the requested price
+        PERF_BOOK_AGE      submit - order_request.ts. Strategies stamp `ts` with the
+                           triggering event's exchange timestamp, so this is how old the
+                           market data was when the order left the strategy: venue -> host
+                           transport, queueing, and the decision itself. Includes clock
+                           offset against the venue.
+        PERF_QUEUE_TIME    submit -> request started on the asyncio thread
+        PERF_CREATE_RTT    create request round trip
+        PERF_ACK_TIME      submit -> gateway published ORDER_CREATED
+        PERF_FILL_TIME     submit -> gateway saw the order complete
+        PERF_CANCEL_RTT    cancel request round trip
+        PERF_CANCEL_TIME   cancel submit -> confirmed cancelled: how long a maker order
+                           could still be filled after the strategy gave up on it
+        PERF_SLIPPAGE      exec price vs. `order_request.price`, in price units per unit
+        PERF_SLIPPAGE_BPS  the same, in basis points of the requested price
         """
         order_request = order_response.order_request
         perf = self._order_perf.pop(order_request.ctx_id, None)
         if perf is None:
             return
         now = time.time()
-        fields = [_FIELD_BOOK_AGE, perf.submit_ts - perf.decision_ts]
-        _add_duration(fields, _FIELD_QUEUE_TIME, perf.submit_ts, perf.sent_ts)
-        _add_duration(fields, _FIELD_CREATE_RTT, perf.sent_ts, perf.acked_ts)
-        _add_duration(fields, _FIELD_ACK_TIME, perf.submit_ts, perf.created_ts)
-        _add_duration(fields, _FIELD_CANCEL_RTT, perf.cancel_sent_ts, perf.cancel_acked_ts)
+        fields = [_FIELD_PERF_BOOK_AGE, perf.submit_ts - perf.decision_ts]
+        _add_duration(fields, _FIELD_PERF_QUEUE_TIME, perf.submit_ts, perf.sent_ts)
+        _add_duration(fields, _FIELD_PERF_CREATE_RTT, perf.sent_ts, perf.acked_ts)
+        _add_duration(fields, _FIELD_PERF_ACK_TIME, perf.submit_ts, perf.created_ts)
+        _add_duration(fields, _FIELD_PERF_CANCEL_RTT, perf.cancel_sent_ts, perf.cancel_acked_ts)
         if outcome == "FILLED":
-            _add_duration(fields, _FIELD_FILL_TIME, perf.submit_ts, now)
+            _add_duration(fields, _FIELD_PERF_FILL_TIME, perf.submit_ts, now)
             if order_request.price:
                 slippage = order_response.exec_price - order_request.price
                 if order_request.side == Side.SELL:
                     slippage = -slippage
                 fields += [
-                    _FIELD_SLIPPAGE,
+                    _FIELD_PERF_SLIPPAGE,
                     slippage,
-                    _FIELD_SLIPPAGE_BPS,
+                    _FIELD_PERF_SLIPPAGE_BPS,
                     slippage / order_request.price * 10_000,
                 ]
         elif outcome == "CANCELLED":
-            _add_duration(fields, _FIELD_CANCEL_TIME, perf.cancel_submit_ts, now)
+            _add_duration(fields, _FIELD_PERF_CANCEL_TIME, perf.cancel_submit_ts, now)
         market = order_request.market
         tags = [
             _TAG_EXCHANGE_NAME,
@@ -639,10 +639,10 @@ class DefaultGatewayAsync(DefaultGateway):
             order_request.settle_type._value_,
             _TAG_ORDER_TYPE,
             order_request.order_type._value_,
-            _TAG_OUTCOME,
+            _TAG_PERF_OUTCOME,
             outcome,
         ]
-        metric = Metric(_ORDER_PERF, now, tags, fields)
+        metric = Metric(_PERF_ORDER, now, tags, fields)
         self.publish_status(EventType.ORDER_METRICS, OrderMetrics(order_request, metric))
 
     def _record_reconciliation(self, checked_orders: int, terminal_events: int) -> None:
