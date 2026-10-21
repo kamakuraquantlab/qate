@@ -176,7 +176,7 @@ class Trade(TimeSeriesData):
     symbol: Symbol
     exchange_name: ExchangeName
     exchange_ts: float
-    received_ts: float = time.time()
+    received_ts: float = field(default_factory=time.time)
 
     def get_ts(self) -> float:
         return self.exchange_ts
@@ -282,7 +282,7 @@ class OrderBook(TimeSeriesData):
     symbol: Symbol
     exchange_name: ExchangeName
     exchange_ts: float
-    received_ts: float = time.time()
+    received_ts: float = field(default_factory=time.time)
 
     def get_ts(self) -> float:
         return self.exchange_ts
