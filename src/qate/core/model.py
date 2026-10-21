@@ -19,6 +19,7 @@ class Measurement(Enum):
     SYS = auto()
     EVAL = auto()
     BAR = auto()
+    ORDER_PERF = auto()
 
 
 class Tag(Enum):
@@ -29,6 +30,7 @@ class Tag(Enum):
     ORDER_TYPE = auto()
     DATA_TYPE = auto()
     DESC = auto()
+    OUTCOME = auto()
 
 
 class Field(Enum):
@@ -52,6 +54,15 @@ class Field(Enum):
     FEE = auto()
     # general
     VALUE = auto()
+    # order_perf, durations in seconds
+    BOOK_AGE = auto()
+    QUEUE_TIME = auto()
+    CREATE_RTT = auto()
+    ACK_TIME = auto()
+    FILL_TIME = auto()
+    CANCEL_RTT = auto()
+    CANCEL_TIME = auto()
+    SLIPPAGE_BPS = auto()
 
 
 class DataType(Enum):

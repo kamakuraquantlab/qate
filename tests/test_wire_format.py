@@ -58,6 +58,7 @@ Measurement_VALUES = {
     "SYS": 8,
     "EVAL": 9,
     "BAR": 10,
+    "ORDER_PERF": 11,
 }
 Tag_VALUES = {
     "EXCHANGE_NAME": 1,
@@ -67,6 +68,7 @@ Tag_VALUES = {
     "ORDER_TYPE": 5,
     "DATA_TYPE": 6,
     "DESC": 7,
+    "OUTCOME": 8,
 }
 Field_VALUES = {
     "PRICE": 1,
@@ -84,6 +86,14 @@ Field_VALUES = {
     "RETURN": 13,
     "FEE": 14,
     "VALUE": 15,
+    "BOOK_AGE": 16,
+    "QUEUE_TIME": 17,
+    "CREATE_RTT": 18,
+    "ACK_TIME": 19,
+    "FILL_TIME": 20,
+    "CANCEL_RTT": 21,
+    "CANCEL_TIME": 22,
+    "SLIPPAGE_BPS": 23,
 }
 
 

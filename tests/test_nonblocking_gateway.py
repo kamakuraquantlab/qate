@@ -10,14 +10,15 @@ import pytest
 from qate.core.api import Api
 from qate.core.ev_type import EventType
 from qate.core.feed import ExchangeFeed
-from qate.core.model import ExchangeName, Market, SettleType, Side
-from qate.core.order import ExchangeExecution, ExchangeOrder, OrderError, OrderRequest, OrderState
+from qate.core.model import ExchangeName, Field, Market, Measurement, Metric, SettleType, Side, Tag
+from qate.core.order import ExchangeExecution, ExchangeOrder, OrderError, OrderMetrics, OrderRequest, OrderState
 from qate.core.order_api import OrderApi
 from qate.core.symbol import Symbol
 from qate.trading.exceptions import StopTradingException
 from qate.trading.gateways.default import ReconOrdersCallable
 from qate.trading.gateways.nonblocking import DefaultGatewayAsync
-from qate.trading.runtime2 import Runtime2, _Gateway
+from qate.trading.reporter import Reporter
+from qate.trading.runtime2 import Runtime2, StrategyEvent, _Gateway
 
 MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
 
@@ -652,3 +653,97 @@ def test_runtime2_routes_a_fill_that_arrives_after_a_rejected_cancel():
         gateway.stop()
         gateway.join(timeout=3)
     assert not gateway.is_alive()
+
+
+def test_create_reaches_the_order_api_while_the_gateway_thread_is_busy(setup_gateway):
+    """The request leaves from the caller's thread; the gateway thread only does bookkeeping."""
+    gateway, _, api, feed, orders, _ = setup_gateway
+    release = threading.Event()
+    gateway.register("TEST_BLOCK", lambda _: release.wait(5))
+    gateway.put("TEST_BLOCK")
+    order = request()
+    try:
+        gateway.create(order)
+        assert api.create_started.wait(2)
+        assert orders.empty()
+    finally:
+        release.set()
+    assert orders.get(timeout=2)[0] == EventType.ORDER_CREATED
+
+
+def order_metrics(statuses):
+    return [event for event_type, event in list(statuses.queue) if event_type == EventType.ORDER_METRICS]
+
+
+def test_a_filled_order_publishes_its_perf_metric(setup_gateway):
+    gateway, _, _, feed, orders, statuses = setup_gateway
+    order = OrderRequest(time.time() - 0.25, MARKET, Side.BUY, 100, 1, SettleType.OPEN)
+    gateway.create(order)
+    _, response = orders.get(timeout=2)
+    feed.publish_execution(ExchangeExecution("fill", response.order_id, 100.5, 1, time.time()))
+    assert orders.get(timeout=2)[0] == EventType.ORDER_FILLED
+    settle(gateway)
+
+    [published] = order_metrics(statuses)
+    assert published.order_request is order
+    metric = published.metric
+    assert metric.measurement == Measurement.ORDER_PERF.value
+    tags = dict(zip(metric.tags[::2], metric.tags[1::2]))
+    assert tags[Tag.OUTCOME.value] == "FILLED"
+    assert tags[Tag.SIDE.value] == Side.BUY.value
+    fields = dict(zip(metric.fields[::2], metric.fields[1::2]))
+    assert fields[Field.BOOK_AGE.value] >= 0.25
+    assert fields[Field.SLIPPAGE.value] == pytest.approx(0.5)
+    assert fields[Field.SLIPPAGE_BPS.value] == pytest.approx(50)
+    for field in (Field.QUEUE_TIME, Field.CREATE_RTT, Field.ACK_TIME, Field.FILL_TIME):
+        assert fields[field.value] >= 0
+    assert Field.CANCEL_RTT.value not in fields
+    assert not gateway._order_perf
+
+
+def test_a_cancelled_order_publishes_its_cancel_timings(setup_gateway):
+    gateway, sync, _, _, orders, statuses = setup_gateway
+    order = created(setup_gateway)
+    sync.snapshot = snapshot(order, OrderState.CANCELLED)
+    gateway.cancel(order)
+    assert gateway.cancel_processed.wait(2)
+    gateway.put("TEST_RECONCILE")
+    assert orders.get(timeout=2)[0] == EventType.ORDER_CANCELLED
+    settle(gateway)
+
+    [published] = order_metrics(statuses)
+    tags = dict(zip(published.metric.tags[::2], published.metric.tags[1::2]))
+    assert tags[Tag.OUTCOME.value] == "CANCELLED"
+    fields = dict(zip(published.metric.fields[::2], published.metric.fields[1::2]))
+    assert fields[Field.CANCEL_RTT.value] >= 0
+    assert fields[Field.CANCEL_TIME.value] >= 0
+    assert Field.FILL_TIME.value not in fields
+
+
+def test_runtime2_reports_order_metrics_for_the_owning_instance():
+    runtime = Runtime2()
+    reported = []
+
+    class Recorder(Reporter):
+        def report_order_metrics(self, event):
+            reported.append(event)
+
+    runtime.add_reporter(Recorder())
+    order = request()
+    order.set_instance_key("02")
+    metric = Metric(Measurement.ORDER_PERF.value, 1.0)
+    for handler in runtime.handlers[EventType.ORDER_METRICS]:
+        handler(OrderMetrics(order, metric))
+    assert reported == [StrategyEvent("02", metric)]
+
+
+def test_cancel_after_a_fill_is_dropped_quietly(setup_gateway):
+    gateway, _, api, feed, orders, _ = setup_gateway
+    order = created(setup_gateway)
+    feed.publish_execution(execution(order))
+    assert orders.get(timeout=2)[0] == EventType.ORDER_FILLED
+    api.cancel_error = RuntimeError("order already filled")
+    gateway.cancel(order)
+    assert gateway.cancel_processed.wait(2)
+    settle(gateway)
+    assert orders.empty()

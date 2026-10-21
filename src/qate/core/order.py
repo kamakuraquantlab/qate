@@ -163,6 +163,18 @@ class ExchangeExecution(TimeSeriesData):
         return self.exchange_ts
 
 
+@dataclass(frozen=True)
+class OrderMetrics:
+    """A gateway's measurements of one order, published as `ORDER_METRICS`.
+
+    The request travels with the metric so a shared runtime can attribute it to the
+    strategy instance that sent the order.
+    """
+
+    order_request: OrderRequest
+    metric: Metric
+
+
 @dataclass
 class OrderTracker:
     order_request: OrderRequest

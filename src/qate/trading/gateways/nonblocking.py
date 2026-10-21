@@ -8,11 +8,12 @@ from logging import getLogger
 from typing import Any
 
 from qate.core.ev_type import EventType
-from qate.core.model import FatalException
+from qate.core.model import FatalException, Field, Measurement, Metric, Side, Tag
 from qate.core.order import (
     ExchangeExecution,
     ExchangeOrder,
     OrderError,
+    OrderMetrics,
     OrderRequest,
     OrderResponse,
     OrderState,
@@ -27,17 +28,64 @@ LOG = getLogger(__name__)
 EVENT_ASYNC_CREATE_RESULT = "EVENT_ASYNC_CREATE_ORDER_RESULT"
 EVENT_ASYNC_CANCEL_RESULT = "EVENT_ASYNC_CANCEL_ORDER_RESULT"
 EVENT_ASYNC_RECONCILIATION_RESULT = "EVENT_ASYNC_RECONCILIATION_RESULT"
+_EVENT_SUBMITTED = "EVENT_ASYNC_OPERATION_SUBMITTED"
+_EVENT_REJECTED = "EVENT_ASYNC_OPERATION_REJECTED"
 _EVENT_STOP = "EVENT_ASYNC_GATEWAY_STOP"
+PERF_GATEWAY = "PERF_GATEWAY"
+
+_ORDER_PERF = Measurement.ORDER_PERF._value_
+_TAG_EXCHANGE_NAME = Tag.EXCHANGE_NAME._value_
+_TAG_SYMBOL = Tag.SYMBOL._value_
+_TAG_SIDE = Tag.SIDE._value_
+_TAG_SETTLE_TYPE = Tag.SETTLE_TYPE._value_
+_TAG_ORDER_TYPE = Tag.ORDER_TYPE._value_
+_TAG_OUTCOME = Tag.OUTCOME._value_
+_FIELD_BOOK_AGE = Field.BOOK_AGE._value_
+_FIELD_QUEUE_TIME = Field.QUEUE_TIME._value_
+_FIELD_CREATE_RTT = Field.CREATE_RTT._value_
+_FIELD_ACK_TIME = Field.ACK_TIME._value_
+_FIELD_FILL_TIME = Field.FILL_TIME._value_
+_FIELD_CANCEL_RTT = Field.CANCEL_RTT._value_
+_FIELD_CANCEL_TIME = Field.CANCEL_TIME._value_
+_FIELD_SLIPPAGE = Field.SLIPPAGE._value_
+_FIELD_SLIPPAGE_BPS = Field.SLIPPAGE_BPS._value_
 
 
 @dataclass
 class _AsyncOrderResult:
+    """One operation, from submission to outcome.
+
+    Created on the submitting thread, completed on the asyncio thread, then put on
+    the gateway queue; the queue hand-off is what makes the gateway thread's reads safe.
+    """
+
     order_request: OrderRequest | None
     operation_id: int = -1
     event_type: str = ""
     payload: Any = None
     error: BaseException | None = None
-    submitted_ts: float = 0.0
+    submitted_ts: float = 0.0  # monotonic, for gateway latency stats
+    submit_wall_ts: float = 0.0  # time.time() when the caller handed it over
+    sent_ts: float = 0.0  # time.time() when the request started, on the asyncio thread
+    done_ts: float = 0.0  # time.time() when the response arrived
+    future: concurrent.futures.Future | None = None
+
+
+@dataclass
+class _OrderPerf:
+    """What it cost, in time, to get one order to the exchange and back.
+
+    `ORDER_PERF` reports these once per order, at its terminal state.
+    """
+
+    decision_ts: float
+    submit_ts: float
+    sent_ts: float = 0.0
+    acked_ts: float = 0.0
+    created_ts: float = 0.0
+    cancel_submit_ts: float = 0.0
+    cancel_sent_ts: float = 0.0
+    cancel_acked_ts: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -58,6 +106,18 @@ class AsyncGatewayStats:
 
 class DefaultGatewayAsync(DefaultGateway):
     """Async create/cancel, with all order state owned by the gateway thread.
+
+    `create` and `cancel` hand the request straight to the asyncio thread from the
+    caller's thread. Routing it through the gateway thread first added a thread
+    wake-up to the one path where time is money: under load each wake-up waits for
+    the GIL, and a market order's price is decided when it reaches the exchange.
+    Bookkeeping still happens on the gateway thread: a `_EVENT_SUBMITTED` is queued
+    before the request is scheduled, so it precedes both the result and any private
+    feed event about the order, which is what lets an early execution be buffered.
+
+    Each order's timeline is published once, at its terminal state, as an
+    `ORDER_METRICS` status event holding an `ORDER_PERF` metric; see
+    `_publish_order_perf`.
 
     Stop drains submitted operations and their results before closing the API.
     As with the synchronous API, transports must bound their request duration.
@@ -92,6 +152,11 @@ class DefaultGatewayAsync(DefaultGateway):
         self._max_pending_operations = max_pending_operations
         self._shutdown_timeout_ts = shutdown_timeout_ts
         self._pending_operations = 0
+        # Admission happens on the caller's thread, so capacity is counted under a
+        # lock there; `_pending_operations` is the gateway thread's view of the same.
+        self._admission_lock = threading.Lock()
+        self._admitted_operations = 0
+        self._order_perf: dict[int, _OrderPerf] = {}
         self._pending_creates: set[int] = set()
         self._early_events: dict[str, list[tuple[str, Any]]] = {}
         self._execution_ids: dict[str, set[str]] = {}
@@ -101,7 +166,7 @@ class DefaultGatewayAsync(DefaultGateway):
         self._is_async_shutdown = False
         self._async_loop = asyncio.new_event_loop()
         self._async_semaphore = asyncio.Semaphore(max_concurrent_operations)
-        self._async_futures: dict[int, concurrent.futures.Future] = {}
+        self._async_futures: dict[int, _AsyncOrderResult] = {}
         self._pending_async_requests: dict[int, tuple[str, OrderRequest | None, float]] = {}
         self._next_operation_id = 0
         self._async_thread = threading.Thread(target=self._run_async_loop, daemon=True)
@@ -121,6 +186,8 @@ class DefaultGatewayAsync(DefaultGateway):
         self.register(EVENT_ASYNC_CREATE_RESULT, self._create_result)
         self.register(EVENT_ASYNC_CANCEL_RESULT, self._cancel_result)
         self.register(EVENT_ASYNC_RECONCILIATION_RESULT, self._reconciliation_result)
+        self.register(_EVENT_SUBMITTED, self._handle_submitted)
+        self.register(_EVENT_REJECTED, self._handle_rejected)
         self.register(_EVENT_STOP, self._handle_stop)
         self.repeat(5, AsyncReconOrdersCallable())
         self._async_thread.start()
@@ -132,24 +199,32 @@ class DefaultGatewayAsync(DefaultGateway):
     def create(self, order_request: OrderRequest) -> None:
         if self._stop_requested.is_set():
             raise RuntimeError("Gateway is stopping")
-        super().create(order_request)
+        self._submit_order(order_request, EVENT_ASYNC_CREATE_RESULT, self._order_api.create_order)
 
     def cancel(self, order_request: OrderRequest) -> None:
         if self._stop_requested.is_set():
             raise RuntimeError("Gateway is stopping")
-        super().cancel(order_request)
+        # Sent without checking the tracker, which the gateway thread owns. If a
+        # fill or cancel already won the race, the venue refuses or no-ops and
+        # `_handle_async_cancel_result` drops the answer for an untracked order.
+        self._submit_order(order_request, EVENT_ASYNC_CANCEL_RESULT, self._order_api.cancel_order)
 
-    def _submit_async(
+    def handle_create_order(self, order_request: OrderRequest):
+        """For a caller that queues `EVENT_CREATE_ORDER` rather than calling `create`."""
+        self._submit_order(order_request, EVENT_ASYNC_CREATE_RESULT, self._order_api.create_order)
+
+    def handle_cancel_order(self, order_request: OrderRequest):
+        """For a caller that queues `EVENT_CANCEL_ORDER` rather than calling `cancel`."""
+        self._submit_order(order_request, EVENT_ASYNC_CANCEL_RESULT, self._order_api.cancel_order)
+
+    def _submit_order(
         self,
         order_request: OrderRequest,
         event_type: str,
         operation: Callable[[OrderRequest], Awaitable[Any]],
-    ) -> bool:
-        return self._submit_operation(
-            order_request,
-            event_type,
-            lambda: operation(order_request),
-        )
+    ) -> None:
+        if not self._submit_operation(order_request, event_type, lambda: operation(order_request)):
+            self.put(_EVENT_REJECTED, (event_type, order_request))
 
     def _submit_operation(
         self,
@@ -157,60 +232,76 @@ class DefaultGatewayAsync(DefaultGateway):
         event_type: str,
         operation: Callable[[], Awaitable[Any]],
     ) -> bool:
-        if self._pending_operations >= self._max_pending_operations:
-            self._rejected_operations += 1
+        """Schedule an operation on the asyncio thread. Safe from any thread."""
+        with self._admission_lock:
+            if self._admitted_operations >= self._max_pending_operations:
+                admitted = False
+            else:
+                admitted = True
+                self._admitted_operations += 1
+                operation_id = self._next_operation_id
+                self._next_operation_id += 1
+        if not admitted:
             LOG.error(
-                "Async gateway capacity exhausted pending=%s limit=%s operation=%s ctx_id=%s",
-                self._pending_operations,
+                "Async gateway capacity exhausted limit=%s operation=%s ctx_id=%s",
                 self._max_pending_operations,
                 event_type,
                 order_request.ctx_id if order_request is not None else None,
             )
             return False
-        submitted_ts = time.monotonic()
-        operation_id = self._next_operation_id
-        self._next_operation_id += 1
+
+        result = _AsyncOrderResult(
+            order_request,
+            operation_id=operation_id,
+            event_type=event_type,
+            submitted_ts=time.monotonic(),
+            submit_wall_ts=time.time(),
+        )
 
         async def runner() -> None:
             try:
                 async with self._async_semaphore:
-                    result = await operation()
+                    result.sent_ts = time.time()
+                    result.payload = await operation()
             except (Exception, asyncio.CancelledError) as exc:
-                self.put(
-                    event_type,
-                    _AsyncOrderResult(
-                        order_request,
-                        operation_id=operation_id,
-                        event_type=event_type,
-                        error=exc,
-                        submitted_ts=submitted_ts,
-                    ),
-                )
-            else:
-                self.put(
-                    event_type,
-                    _AsyncOrderResult(
-                        order_request,
-                        operation_id=operation_id,
-                        event_type=event_type,
-                        payload=result,
-                        submitted_ts=submitted_ts,
-                    ),
-                )
+                result.error = exc
+            result.done_ts = time.time()
+            self.put(event_type, result)
 
+        # Bookkeeping first: it must precede the result and any feed event about the order.
+        self.put(_EVENT_SUBMITTED, result)
+        try:
+            result.future = asyncio.run_coroutine_threadsafe(runner(), self._async_loop)
+        except RuntimeError as exc:  # the loop is already closed: we are shutting down
+            result.error = exc
+            self.put(event_type, result)
+            raise
+        return True
+
+    def _handle_submitted(self, result: _AsyncOrderResult) -> None:
         self._pending_operations += 1
-        self._pending_async_requests[operation_id] = (event_type, order_request, submitted_ts)
+        self._pending_async_requests[result.operation_id] = (
+            result.event_type,
+            result.order_request,
+            result.submitted_ts,
+        )
+        self._async_futures[result.operation_id] = result
         self._submitted_operations += 1
         self._peak_pending_operations = max(self._peak_pending_operations, self._pending_operations)
-        try:
-            future = asyncio.run_coroutine_threadsafe(runner(), self._async_loop)
-        except Exception:
-            self._pending_operations -= 1
-            del self._pending_async_requests[operation_id]
-            self._submitted_operations -= 1
-            raise
-        self._async_futures[operation_id] = future
-        return True
+        order_request = result.order_request
+        if result.event_type == EVENT_ASYNC_CREATE_RESULT:
+            self._pending_creates.add(order_request.ctx_id)
+            self._order_perf[order_request.ctx_id] = _OrderPerf(order_request.ts, result.submit_wall_ts)
+        elif result.event_type == EVENT_ASYNC_CANCEL_RESULT:
+            perf = self._order_perf.get(order_request.ctx_id)
+            if perf is not None:
+                perf.cancel_submit_ts = result.submit_wall_ts
+
+    def _handle_rejected(self, rejected: tuple[str, OrderRequest]) -> None:
+        event_type, order_request = rejected
+        self._rejected_operations += 1
+        error = OrderError.CREATE if event_type == EVENT_ASYNC_CREATE_RESULT else OrderError.CANCEL
+        self.publish_order_error(OrderResponse(order_request, error=error))
 
     def _start_reconciliation(self, stale_after_ts: float, batch_size: int) -> None:
         if self._stopping or self._reconciliation_pending or not self.exchange_orders:
@@ -246,6 +337,8 @@ class DefaultGatewayAsync(DefaultGateway):
                 tracker.last_recon_ts = now
             self._reconciliation_pending = True
             self._reconciliation_checked_orders = len(trackers)
+        else:
+            self._rejected_operations += 1
 
     def _reconciliation_result(self, result: _AsyncOrderResult) -> None:
         if result.operation_id not in self._pending_async_requests:
@@ -269,18 +362,12 @@ class DefaultGatewayAsync(DefaultGateway):
             self._reconciliation_checked_orders = 0
             self._operation_finished(result)
 
-    def handle_create_order(self, order_request: OrderRequest):
-        if self._stopping:
-            self.publish_order_error(OrderResponse(order_request, error=OrderError.CREATE))
-            return
-        self._pending_creates.add(order_request.ctx_id)
-        if not self._submit_async(order_request, EVENT_ASYNC_CREATE_RESULT, self._order_api.create_order):
-            self._pending_creates.remove(order_request.ctx_id)
-            self.publish_order_error(OrderResponse(order_request, error=OrderError.CREATE))
-
     def _create_result(self, result: _AsyncOrderResult) -> None:
         if result.operation_id not in self._pending_async_requests:
             return
+        perf = self._order_perf.get(result.order_request.ctx_id)
+        if perf is not None:
+            perf.sent_ts, perf.acked_ts = result.sent_ts, result.done_ts
         try:
             self._handle_async_create_result(result)
         finally:
@@ -302,6 +389,9 @@ class DefaultGatewayAsync(DefaultGateway):
         if order_id is None:
             self.publish_order_error(OrderResponse(order_request, error=OrderError.CREATE))
             return
+        perf = self._order_perf.get(order_request.ctx_id)
+        if perf is not None:
+            perf.created_ts = time.time()
         order_tracker = OrderTracker(order_request, order_id, time.time())
         self.exchange_orders[order_id] = order_tracker
         self.publish_order_created(order_tracker.created_response())
@@ -338,19 +428,12 @@ class DefaultGatewayAsync(DefaultGateway):
         if order_id not in self.exchange_orders:
             self._execution_ids.pop(order_id, None)
 
-    def handle_cancel_order(self, order_request: OrderRequest):
-        tracker = self.exchange_orders.get(order_request.order_id)
-        if tracker is None:
-            return  # The fill/cancel race already has a terminal response queued.
-        if self._stopping:
-            self.publish_order_error(OrderResponse(order_request, error=OrderError.CANCEL))
-            return
-        if not self._submit_async(order_request, EVENT_ASYNC_CANCEL_RESULT, self._order_api.cancel_order):
-            self.publish_order_error(OrderResponse(order_request, error=OrderError.CANCEL))
-
     def _cancel_result(self, result: _AsyncOrderResult) -> None:
         if result.operation_id not in self._pending_async_requests:
             return
+        perf = self._order_perf.get(result.order_request.ctx_id)
+        if perf is not None:
+            perf.cancel_sent_ts, perf.cancel_acked_ts = result.sent_ts, result.done_ts
         try:
             self._handle_async_cancel_result(result)
         finally:
@@ -393,6 +476,8 @@ class DefaultGatewayAsync(DefaultGateway):
             if failed:
                 self._failed_operations += 1
         self._pending_operations -= 1
+        with self._admission_lock:
+            self._admitted_operations -= 1
         if self._stopping and not self._pending_operations:
             super().stop()
 
@@ -439,13 +524,14 @@ class DefaultGatewayAsync(DefaultGateway):
                     self.tick()
             self.heartbeat_interval = original_heartbeat
         finally:
-            LOG.info("Async gateway final stats %s", self.stats())
+            LOG.info("%s %s", PERF_GATEWAY, self.stats())
             self._shutdown_async()
 
     def _timeout_pending_operations(self) -> None:
         timed_out = []
-        for operation_id, future in tuple(self._async_futures.items()):
-            if future.cancel():
+        for operation_id, pending in tuple(self._async_futures.items()):
+            # `future` is None only for the instant between queueing and scheduling.
+            if pending.future is not None and pending.future.cancel():
                 timed_out.append((operation_id, self._pending_async_requests[operation_id]))
         if not timed_out:
             return
@@ -466,6 +552,8 @@ class DefaultGatewayAsync(DefaultGateway):
         self._completed_operations += timed_out_count
         self._failed_operations += timed_out_count
         self._pending_operations -= timed_out_count
+        with self._admission_lock:
+            self._admitted_operations -= timed_out_count
         timed_out_creates = {
             order_request.ctx_id
             for _, (event_type, order_request, _) in timed_out
@@ -478,6 +566,84 @@ class DefaultGatewayAsync(DefaultGateway):
             self._record_reconciliation(self._reconciliation_checked_orders, 0)
             self._reconciliation_pending = False
             self._reconciliation_checked_orders = 0
+
+    def publish_order_filled(self, order_response: OrderResponse):
+        self._publish_order_perf(order_response, "FILLED")
+        super().publish_order_filled(order_response)
+
+    def publish_order_cancelled(self, order_response: OrderResponse):
+        self._publish_order_perf(order_response, "CANCELLED")
+        super().publish_order_cancelled(order_response)
+
+    def publish_order_error(self, order_response: OrderResponse):
+        # A failed cancel leaves the order alive; only a failed create ends it.
+        if order_response.error == OrderError.CREATE:
+            self._publish_order_perf(order_response, "CREATE_ERROR")
+        super().publish_order_error(order_response)
+
+    def _publish_order_perf(self, order_response: OrderResponse, outcome: str) -> None:
+        """One `ORDER_PERF` metric per order, published on the status feed as `ORDER_METRICS`.
+
+        Tagged like an `ORDER` record, plus `OUTCOME` (FILLED, CANCELLED or
+        CREATE_ERROR). Durations are seconds; a field is absent when it does not
+        apply, e.g. no cancel was sent. Slippage positive is worse.
+
+        BOOK_AGE      submit - order_request.ts. Strategies stamp `ts` with the
+                      triggering event's exchange timestamp, so this is how old the
+                      market data was when the order left the strategy: venue -> host
+                      transport, queueing, and the decision itself. Includes clock
+                      offset against the venue.
+        QUEUE_TIME    submit -> request started on the asyncio thread
+        CREATE_RTT    create request round trip
+        ACK_TIME      submit -> gateway published ORDER_CREATED
+        FILL_TIME     submit -> gateway saw the order complete
+        CANCEL_RTT    cancel request round trip
+        CANCEL_TIME   cancel submit -> confirmed cancelled: how long a maker order
+                      could still be filled after the strategy gave up on it
+        SLIPPAGE      exec price vs. `order_request.price`, in price units per unit
+        SLIPPAGE_BPS  the same, in basis points of the requested price
+        """
+        order_request = order_response.order_request
+        perf = self._order_perf.pop(order_request.ctx_id, None)
+        if perf is None:
+            return
+        now = time.time()
+        fields = [_FIELD_BOOK_AGE, perf.submit_ts - perf.decision_ts]
+        _add_duration(fields, _FIELD_QUEUE_TIME, perf.submit_ts, perf.sent_ts)
+        _add_duration(fields, _FIELD_CREATE_RTT, perf.sent_ts, perf.acked_ts)
+        _add_duration(fields, _FIELD_ACK_TIME, perf.submit_ts, perf.created_ts)
+        _add_duration(fields, _FIELD_CANCEL_RTT, perf.cancel_sent_ts, perf.cancel_acked_ts)
+        if outcome == "FILLED":
+            _add_duration(fields, _FIELD_FILL_TIME, perf.submit_ts, now)
+            if order_request.price:
+                slippage = order_response.exec_price - order_request.price
+                if order_request.side == Side.SELL:
+                    slippage = -slippage
+                fields += [
+                    _FIELD_SLIPPAGE,
+                    slippage,
+                    _FIELD_SLIPPAGE_BPS,
+                    slippage / order_request.price * 10_000,
+                ]
+        elif outcome == "CANCELLED":
+            _add_duration(fields, _FIELD_CANCEL_TIME, perf.cancel_submit_ts, now)
+        market = order_request.market
+        tags = [
+            _TAG_EXCHANGE_NAME,
+            market.exchange_name._value_,
+            _TAG_SYMBOL,
+            market.symbol._value_,
+            _TAG_SIDE,
+            order_request.side._value_,
+            _TAG_SETTLE_TYPE,
+            order_request.settle_type._value_,
+            _TAG_ORDER_TYPE,
+            order_request.order_type._value_,
+            _TAG_OUTCOME,
+            outcome,
+        ]
+        metric = Metric(_ORDER_PERF, now, tags, fields)
+        self.publish_status(EventType.ORDER_METRICS, OrderMetrics(order_request, metric))
 
     def _record_reconciliation(self, checked_orders: int, terminal_events: int) -> None:
         self._reconciliation_runs += 1
@@ -516,6 +682,11 @@ class DefaultGatewayAsync(DefaultGateway):
             self._async_loop.call_soon_threadsafe(self._async_loop.stop)
             self._async_thread.join()
             self._async_loop.close()
+
+
+def _add_duration(fields: list, field: int, start: float, end: float) -> None:
+    if start and end:
+        fields += [field, end - start]
 
 
 @dataclass(frozen=True)

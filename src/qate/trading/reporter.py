@@ -22,6 +22,9 @@ class Reporter:
     def report_metrics(self, metrics: list[Metric]) -> None:
         """A batch of strategy metrics was emitted."""
 
+    def report_order_metrics(self, metric: Metric) -> None:
+        """A gateway measured one order, once it ended: an `ORDER_PERF` metric."""
+
     def report_pnl(self, pnl_update) -> None:
         """A position was opened or closed. `settle_type` says which."""
 

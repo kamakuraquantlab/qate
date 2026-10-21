@@ -8,7 +8,7 @@ from qate.core.ev_type import EventType
 from qate.core.feed import MarketDataFeed, OrderFeed
 from qate.core.gateway import ExchangeGateway
 from qate.core.model import ExchangeName
-from qate.core.order import OrderRequest, OrderResponse
+from qate.core.order import OrderMetrics, OrderRequest, OrderResponse
 from qate.trading.reporter import Reporter
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
@@ -130,6 +130,12 @@ class Runtime2(EventLoop):
         self.register(EventType.TRADING_ORDER, reporter.report_order)
         self.register(EventType.TRADING_METRICS, reporter.report_metrics)
         self.register(EventType.TRADING_PNL_UPDATE, reporter.report_pnl)
+        self.register(EventType.ORDER_METRICS, partial(self.handle_order_metrics, reporter))
+
+    def handle_order_metrics(self, reporter: Reporter, order_metrics: OrderMetrics) -> None:
+        # A gateway's status reaches this queue directly rather than through a
+        # `_StatusSink`, so the order's own instance key is what attributes it.
+        reporter.report_order_metrics(StrategyEvent(order_metrics.order_request.instance_key, order_metrics.metric))
 
     def handle_order_response(self, event_type: str, order_response: OrderResponse) -> None:
         order_request = order_response.order_request
