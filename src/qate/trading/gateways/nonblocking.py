@@ -567,19 +567,21 @@ class DefaultGatewayAsync(DefaultGateway):
             self._reconciliation_pending = False
             self._reconciliation_checked_orders = 0
 
+    # The response goes out first: the strategy waits on it, and the metric can wait.
+
     def publish_order_filled(self, order_response: OrderResponse):
-        self._publish_order_perf(order_response, "FILLED")
         super().publish_order_filled(order_response)
+        self._publish_order_perf(order_response, "FILLED")
 
     def publish_order_cancelled(self, order_response: OrderResponse):
-        self._publish_order_perf(order_response, "CANCELLED")
         super().publish_order_cancelled(order_response)
+        self._publish_order_perf(order_response, "CANCELLED")
 
     def publish_order_error(self, order_response: OrderResponse):
+        super().publish_order_error(order_response)
         # A failed cancel leaves the order alive; only a failed create ends it.
         if order_response.error == OrderError.CREATE:
             self._publish_order_perf(order_response, "CREATE_ERROR")
-        super().publish_order_error(order_response)
 
     def _publish_order_perf(self, order_response: OrderResponse, outcome: str) -> None:
         """One `PERF_ORDER` metric per order, published on the status feed as `ORDER_METRICS`.
