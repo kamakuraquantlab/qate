@@ -76,6 +76,12 @@ composition it was designed for, expressed in the package that defines it — an
 because it names nothing outside this package.
 `tests/test_reporter.py` is its consumer.
 
+**`qate.trading.risk` is the second exception.** Nothing here imports it either:
+neither shipped strategy needs an entry gate, and adding one to make it a
+consumer would be tuning an example. It stays because strategies built on this
+package each kept a copy of it after it was swept out, and the copies had
+started to drift. `tests/test_risk.py` is its consumer.
+
 **`qate` does not read market data and does not know where it lives.** A replayer
 hands it events. This was not the original shape: there was a `qate.data.bronze`
 that globbed the tree and duplicated `komachi.bronze`'s answers about which days
