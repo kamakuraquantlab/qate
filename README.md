@@ -32,7 +32,7 @@ Enoshima and a live runner use to turn a directory of JSON into a run.
 | Package | Holds |
 |---|---|
 | `qate.core` | Event loop, models, order lifecycle, and the interfaces a venue implements |
-| `qate.trading` | Strategy base class and its config contract, gateways (live and simulated), the replay queue, bars and charts, indicators, inventory, PnL, the metric log, and the `Runtime` a live process runs in |
+| `qate.trading` | Strategy base class and its config contract, gateways (live and simulated), bars and charts, indicators, inventory, PnL, the metric log, and the `Runtime` a live process runs in |
 | `qate.strategy` | Two worked strategies, shipped to be read |
 | `qate.exchange` | The adapter contract and registry. No venue lives here |
 | `qate.util` | Date ranges, counters, encoding, replay-aware logging |
@@ -88,19 +88,20 @@ with no conversion.
 A replay is single-threaded on purpose: the events already exist, in order, and
 two runs of the same data must give the same result. One queue in place of the
 live ones collapses the threading into a single loop, so the same `Trader`,
-`Strategy` and gateway code runs unchanged:
+`Strategy` and gateway code runs unchanged. The queue is the replayer's: any
+`qate.core.ev_q.EventQueue` that serves the strategy's own events (order
+responses) before the next market event will do. Enoshima's is `Channel`.
 
 ```python
 from qate.trading.gateways import BacktestGateway
-from qate.trading.replay import ReplayQueue
 from qate.trading.trader import Trader
 
-# events: an iterable of (EventType, OrderBook | Trade), in timestamp order.
-# Where they come from is not qate's business — see above.
+# queue: an EventQueue yielding (EventType, OrderBook | Trade) in timestamp order.
+# Where the events come from is not qate's business — see above.
 
 gateway = BacktestGateway(ExchangeName.GMO, slippage_rate=0.0)  # fills in place
 
-trader = Trader(strategy, ReplayQueue(events))              # market data + own events
+trader = Trader(strategy, queue)                            # market data + own events
 trader.add_gateway(gateway)
 trader.register(EventType.MARKET_ORDER_BOOK, gateway.handle_order_book)
 trader.run()                                                # returns when the data ends

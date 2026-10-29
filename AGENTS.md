@@ -151,12 +151,13 @@ abstract base class cannot give.
   orders on each trader's, and a lock-free matcher shared between them could fill
   and cancel one order at once. Do not make `BacktestGateway` thread-safe instead;
   `handle_order_book` runs for every book of every sweep member.
-- **`ReplayQueue` stays here, and is the point of `qate.core.ev_q`.** Swapping the
-  live `queue.Queue` for `qate.trading.replay.ReplayQueue` is the entire difference
-  between trading and replaying, and it is what makes a backtest expressible with
-  nothing but this package installed. A replayer with a real data layout brings its
-  own — Enoshima's `Channel` reads chunks shared between concurrent runs — so do
-  not move this one out to meet it, and do not grow it towards a layout.
+- **A replay's queue belongs to the replayer.** Swapping the live `queue.Queue`
+  for an `EventQueue` that serves the strategy's own events before the next market
+  event is the entire difference between trading and replaying. Enoshima, the only
+  backtest system, brings its own (`Channel`, over chunks shared between concurrent
+  runs), so `qate` ships none: there was a `qate.trading.replay.ReplayQueue` that
+  nothing but tests used. `tests/test_backtest_end_to_end.py` keeps a list-backed
+  one for itself.
 - **A bar builder is a closer plus a creator.** `qate.trading.chart` composes
   *when a bar ends* with *what the bar is*, which is what makes
   `HeikinAshiRangeBarBuilder` expressible; an inheritance hierarchy could not

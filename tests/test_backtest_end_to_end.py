@@ -1,11 +1,12 @@
 import time
+from collections import deque
 
+from qate.core.ev_q import EventQueue
 from qate.core.ev_type import EventType
 from qate.core.model import ExchangeName, Market, OrderBook, OrderLevel, SettleType, Side
 from qate.core.order import OrderRequest, OrderType
 from qate.core.symbol import Symbol
 from qate.trading.gateways import BacktestGateway
-from qate.trading.replay import ReplayQueue
 from qate.trading.strategy import Strategy
 from qate.trading.trader import Trader
 from qate.util.dt_range import DtRange
@@ -13,6 +14,26 @@ from qate.util.dt_range import DtRange
 MARKET = Market(ExchangeName.GMO, Symbol.BTC_JPY)
 DEPTH = 5
 START_TS = DtRange.from_strings("20260115", "20260115").start_ts
+
+
+class ReplayQueue(EventQueue):
+    """Market events from a list, with the strategy's own events served first.
+
+    An order response has to reach the strategy before the next book does, or the
+    strategy is shown a new book while still believing the order is open.
+    """
+
+    def __init__(self, events):
+        self._events = iter(events)
+        self._trading_events = deque()
+
+    def put(self, event):
+        self._trading_events.append(event)
+
+    def get(self, timeout=0):
+        if self._trading_events:
+            return self._trading_events.popleft()
+        return next(self._events, None)
 
 
 def make_books(prices: list[float]) -> list[tuple[str, OrderBook]]:
