@@ -21,7 +21,7 @@ from qate.core.order import (
 )
 from qate.core.order_api import OrderApi
 
-from .default import DefaultGateway
+from .tracking import OrderTrackingGateway
 
 LOG = getLogger(__name__)
 
@@ -104,7 +104,7 @@ class AsyncGatewayStats:
     max_latency_ms: float
 
 
-class DefaultGatewayAsync(DefaultGateway):
+class DefaultGatewayAsync(OrderTrackingGateway):
     """Async create/cancel, with all order state owned by the gateway thread.
 
     `create` and `cancel` hand the request straight to the asyncio thread from the
@@ -143,11 +143,7 @@ class DefaultGatewayAsync(DefaultGateway):
             raise ValueError("max_pending_operations must be at least max_concurrent_operations")
         if shutdown_timeout_ts <= 0:
             raise ValueError("shutdown_timeout_ts must be positive")
-        super().__init__(
-            api,
-            heartbeat_interval_ts=heartbeat_interval_ts,
-            schedule_reconciliation=False,
-        )
+        super().__init__(api, heartbeat_interval_ts)
         self._order_api = order_api
         self._max_pending_operations = max_pending_operations
         self._shutdown_timeout_ts = shutdown_timeout_ts

@@ -15,8 +15,7 @@ from qate.core.order import ExchangeExecution, ExchangeOrder, OrderError, OrderM
 from qate.core.order_api import OrderApi
 from qate.core.symbol import Symbol
 from qate.trading.exceptions import StopTradingException
-from qate.trading.gateways.default import ReconOrdersCallable
-from qate.trading.gateways.nonblocking import DefaultGatewayAsync
+from qate.trading.gateways.nonblocking import AsyncReconOrdersCallable, DefaultGatewayAsync
 from qate.trading.reporter import Reporter
 from qate.trading.runtime2 import Runtime2, StrategyEvent, _Gateway
 
@@ -162,7 +161,7 @@ def setup_gateway():
     feed = ExchangeFeed()
     gateway.subscribe_exchange_feed(feed)
     gateway.register("TEST_BARRIER", lambda event: event.set())
-    gateway.register("TEST_RECONCILE", lambda _: ReconOrdersCallable(stale_after_ts=0)(gateway))
+    gateway.register("TEST_RECONCILE", lambda _: AsyncReconOrdersCallable(stale_after_ts=0)(gateway))
     gateway.start()
     yield gateway, sync, async_api, feed, orders, statuses
     async_api.release_create.set()
@@ -256,9 +255,9 @@ def test_cancel_acceptance_keeps_tracking_delayed_fill(setup_gateway):
 
 @pytest.mark.parametrize("state", [OrderState.CANCELLED, OrderState.FILLED])
 def test_cancel_uses_confirmed_terminal_state(setup_gateway, state):
-    gateway, sync, _, _, orders, _ = setup_gateway
+    gateway, _, async_api, _, orders, _ = setup_gateway
     order = created(setup_gateway)
-    sync.snapshot = snapshot(order, state)
+    async_api.snapshot = snapshot(order, state)
     gateway.cancel(order)
     assert gateway.cancel_processed.wait(2)
     gateway.put("TEST_RECONCILE")
@@ -278,7 +277,7 @@ def test_async_reconciliation_uses_order_api(setup_gateway, state):
     order = created(setup_gateway)
     api.snapshot = snapshot(order, state)
 
-    gateway._start_reconciliation(stale_after_ts=0, batch_size=5)
+    gateway.put("TEST_RECONCILE")
     kind, response = orders.get(timeout=2)
     assert kind == (EventType.ORDER_FILLED if state == OrderState.FILLED else EventType.ORDER_CANCELLED)
     assert response.state == state
@@ -297,7 +296,7 @@ def test_async_reconciliation_does_not_block_gateway_events(setup_gateway):
     api.snapshot = snapshot(order, OrderState.CANCELLED)
     api.release_fetch.clear()
 
-    gateway._start_reconciliation(stale_after_ts=0, batch_size=5)
+    gateway.put("TEST_RECONCILE")
     assert api.fetch_started.wait(2)
     barrier = threading.Event()
     gateway.put("TEST_BARRIER", barrier)
@@ -313,7 +312,7 @@ def test_async_reconciliation_failure_is_retryable(setup_gateway):
     error = RuntimeError("reconciliation failed")
     api.fetch_error = error
 
-    gateway._start_reconciliation(stale_after_ts=0, batch_size=5)
+    gateway.put("TEST_RECONCILE")
     assert statuses.get(timeout=2) == (EventType.EXCEPTION, error)
     settle(gateway)
 
@@ -702,9 +701,9 @@ def test_a_filled_order_publishes_its_perf_metric(setup_gateway):
 
 
 def test_a_cancelled_order_publishes_its_cancel_timings(setup_gateway):
-    gateway, sync, _, _, orders, statuses = setup_gateway
+    gateway, _, async_api, _, orders, statuses = setup_gateway
     order = created(setup_gateway)
-    sync.snapshot = snapshot(order, OrderState.CANCELLED)
+    async_api.snapshot = snapshot(order, OrderState.CANCELLED)
     gateway.cancel(order)
     assert gateway.cancel_processed.wait(2)
     gateway.put("TEST_RECONCILE")

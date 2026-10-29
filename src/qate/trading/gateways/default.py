@@ -3,43 +3,26 @@ from dataclasses import dataclass
 from logging import getLogger
 
 from qate.core.api import Api
-from qate.core.ev_type import EventType
-from qate.core.feed import ExchangeFeed
 from qate.core.order import (
-    ExchangeExecution,
-    ExchangeOrder,
     OrderError,
     OrderRequest,
     OrderResponse,
     OrderState,
     OrderTracker,
 )
-from qate.core.symbol import Symbol
 
 from ..exceptions import StopTradingException
-from .queued import QueuedGateway
+from .tracking import OrderTrackingGateway
 
 LOG = getLogger(__name__)
 
 
-class DefaultGateway(QueuedGateway):
-    def __init__(
-        self,
-        api: Api,
-        heartbeat_interval_ts: float = 3.0,
-        *,
-        schedule_reconciliation: bool = True,
-    ):
-        super(DefaultGateway, self).__init__(api, heartbeat_interval_ts)
-        self.exchange_orders: dict[str, OrderTracker] = {}
-        if schedule_reconciliation:
-            self.repeat(5, ReconOrdersCallable())
+class DefaultGateway(OrderTrackingGateway):
+    """Blocking create and cancel on the loop's thread, reconciled every 5 seconds."""
 
-    def subscribe_exchange_feed(self, exchange_feed: ExchangeFeed):
-        exchange_feed.add_execution_listener(self.event_queue)
-        exchange_feed.add_order_listener(self.event_queue)
-        self.register(EventType.EXCHANGE_EXECUTION, self.handle_exchange_execution)
-        self.register(EventType.EXCHANGE_ORDER, self.handle_exchange_order)
+    def __init__(self, api: Api, heartbeat_interval_ts: float = 3.0):
+        super().__init__(api, heartbeat_interval_ts)
+        self.repeat(5, ReconOrdersCallable())
 
     # Order creation operations
     def handle_create_order(self, order_request: OrderRequest):
@@ -59,25 +42,6 @@ class DefaultGateway(QueuedGateway):
         self.exchange_orders[order_id] = order_tracker
         self.publish_order_created(order_tracker.created_response())
 
-    def _find_order_tracker(self, execution: ExchangeExecution) -> OrderTracker:
-        return self.exchange_orders.get(execution.order_id, None)
-
-    def handle_exchange_execution(self, execution: ExchangeExecution):
-        order_tracker = self._find_order_tracker(execution)
-        if not order_tracker:
-            # Same as handle_exchange_order, please read the comment there
-            # LOG.warning(f"Received exchange execution for unknown order_id {execution}")
-            return
-        LOG.info(
-            f"ON_EXECUTION ctx_id={order_tracker.order_request.ctx_id} "
-            f"trade_id={execution.trade_id} size={execution.size:.3f}"
-        )
-        order_tracker.on_execution(execution)
-        if order_tracker.is_filled():
-            order_tracker.set_filled(execution.get_ts())
-            self.publish_order_filled(order_tracker.filled_response())
-            del self.exchange_orders[order_tracker.order_id]
-
     # Order cancellation operations
     def handle_cancel_order(self, order_request: OrderRequest):
         order_tracker = self.exchange_orders[order_request.order_id]
@@ -90,30 +54,6 @@ class DefaultGateway(QueuedGateway):
             self.publish_order_error(OrderResponse(order_request))
 
         del self.exchange_orders[order_request.order_id]
-
-    def handle_exchange_order(self, exchange_order: ExchangeOrder):
-        order_id = exchange_order.order_id
-        if order_id not in self.exchange_orders:
-            return
-
-        order_tracker = self.exchange_orders[order_id]
-        LOG.info(
-            f"ON_ORDER ctx_id={order_tracker.order_request.ctx_id} "
-            f"state={exchange_order.state} size={exchange_order.exec_size:.3f}"
-        )
-        order_tracker.on_exchange_order(exchange_order)
-        if exchange_order.state == OrderState.FILLED:
-            self.publish_order_filled(order_tracker.filled_response())
-            del self.exchange_orders[order_id]
-        elif exchange_order.state == OrderState.CANCELLED:
-            self.publish_order_cancelled(order_tracker.cancelled_response())
-            del self.exchange_orders[order_id]
-
-    def fetch_balance_sync(self, symbol: Symbol):
-        return self.api.fetch_balance(symbol)
-
-    def _record_reconciliation(self, checked_orders: int, terminal_events: int) -> None:
-        """Optional observability hook for gateway variants."""
 
 
 @dataclass
@@ -217,8 +157,3 @@ class ReconOrdersCallable:
         for o in cancelled_orders:
             LOG.info(f"ReconOrdersCallable cancelled order_id={o.order_id}")
             caller.handle_exchange_order(o)
-
-        caller._record_reconciliation(
-            min(len(stale_orders), self.batch_size),
-            len(executions) + len(cancelled_orders),
-        )

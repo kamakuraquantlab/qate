@@ -151,6 +151,12 @@ abstract base class cannot give.
   orders on each trader's, and a lock-free matcher shared between them could fill
   and cancel one order at once. Do not make `BacktestGateway` thread-safe instead;
   `handle_order_book` runs for every book of every sweep member.
+- **Two live gateways, one order tracker.** `OrderTrackingGateway` holds
+  `exchange_orders` and turns the private feed into fills and cancels.
+  `DefaultGateway` adds blocking create, cancel and reconciliation on the loop's
+  thread; `DefaultGatewayAsync` adds async ones off it. The async gateway used to
+  subclass `DefaultGateway` and switch its reconciliation off with a flag, which left
+  it carrying blocking methods a caller could still schedule on it.
 - **A replay's queue belongs to the replayer.** Swapping the live `queue.Queue`
   for an `EventQueue` that serves the strategy's own events before the next market
   event is the entire difference between trading and replaying. Enoshima, the only

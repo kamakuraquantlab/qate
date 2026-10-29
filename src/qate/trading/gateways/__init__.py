@@ -3,6 +3,7 @@ from .default import CheckOrderStatusCallable, DefaultGateway, ReconOrdersCallab
 from .nonblocking import AsyncGatewayStats, DefaultGatewayAsync
 from .queued import QueuedGateway
 from .simulator import SimulatorGateway
+from .tracking import OrderTrackingGateway
 
 __all__ = [
     "DEFAULT_SLIPPAGE_RATE",
@@ -12,6 +13,7 @@ __all__ = [
     "DefaultGatewayAsync",
     "AsyncGatewayStats",
     "OrderMatching",
+    "OrderTrackingGateway",
     "QueuedGateway",
     "ReconOrdersCallable",
     "SimulatorGateway",
