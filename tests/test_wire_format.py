@@ -32,6 +32,7 @@ ExchangeName_VALUES = {
     "BINANCE": 5,
     "RAKUTEN": 6,
     "SIMULATOR": 7,
+    "HYPERLIQUID": 8,
 }
 Symbol_VALUES = {
     "BTC_JPY": 1,
@@ -46,6 +47,10 @@ Symbol_VALUES = {
     "ETH_USDT": 22,
     "XRP_USDT": 23,
     "SOL_USDT": 24,
+    "BTC_PERP": 30,
+    "ETH_PERP": 31,
+    "XRP_PERP": 32,
+    "SOL_PERP": 33,
 }
 Measurement_VALUES = {
     "TRADING": 1,

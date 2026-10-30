@@ -97,6 +97,7 @@ class ExchangeName(Enum):
     BINANCE = auto()
     RAKUTEN = auto()
     SIMULATOR = auto()
+    HYPERLIQUID = auto()
 
 
 @dataclass

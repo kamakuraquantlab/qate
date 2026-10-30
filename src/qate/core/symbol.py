@@ -35,6 +35,13 @@ class Symbol(Enum):
     DOGE_USDT = 28
     LINK_USDT = 29
 
+    # Perpetuals. The quote and margin currency is the venue's, as `_JPY` and
+    # `_SPOT` leave theirs to the venue: on HYPERLIQUID it is USDC.
+    BTC_PERP = 30
+    ETH_PERP = 31
+    XRP_PERP = 32
+    SOL_PERP = 33
+
 
 class Unit(Enum):
     U_10 = "10"
@@ -94,6 +101,11 @@ _SYMBOL_DEF = {
     Symbol.ADA_USDT: SymbolDef(Unit.U_001, Unit.U_1),
     Symbol.DOGE_USDT: SymbolDef(Unit.U_001, Unit.U_1),
     Symbol.LINK_USDT: SymbolDef(Unit.U_001, Unit.U_001),
+    # perpetuals, treated as their USDT counterparts
+    Symbol.BTC_PERP: SymbolDef(Unit.U_001, Unit.U_0001),
+    Symbol.ETH_PERP: SymbolDef(Unit.U_001, Unit.U_001),
+    Symbol.XRP_PERP: SymbolDef(Unit.U_001, Unit.U_1),
+    Symbol.SOL_PERP: SymbolDef(Unit.U_001, Unit.U_001),
 }
 
 
